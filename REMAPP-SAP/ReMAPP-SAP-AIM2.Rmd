@@ -1,0 +1,457 @@
+---
+title: "ReMAPP SAP AIM 2"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 4
+    number_sections: true
+    latex_engine: xelatex
+    keep_tex: true
+header-includes:
+  - \usepackage{sectsty}
+  - \allsectionsfont{\color{cyan!68!blue}}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(fig.width = 5, fig.height = 4, fig.align = "center")
+library(rmarkdown)
+library(knitr)
+library(tidyverse)
+
+library(officer)
+library(flextable)
+use_df_printer()
+
+load("derived_data/df_hb_long.rda")
+load("derived_data/df_hb_wide.rda")
+load("derived_data/df_inf_preterm.rda")
+
+#table format
+tb_flextable <- function(data, caption, seq_id, bkm) { 
+  tb <- qflextable(data)
+  tb <- set_table_properties(
+    tb, width = 0.8, layout = "autofit",
+    opts_pdf = list(tabcolsep = 3))
+  tb <- set_caption(tb,
+    caption = as_paragraph(
+as_chunk(caption, props = fp_text_default(font.family = "Cambria"))
+),
+    word_stylename = "Table Caption",
+    autonum = run_autonum(seq_id = seq_id, bkm = bkm)
+  )
+  tb <- bold(tb, bold = FALSE, part = "header")
+  tb <- set_formatter(tb, values = list(
+    "p.value" = p_val_format))
+  tb
+}
+
+```
+# Statistic analysis plan
+
+## Data preparation
+
+Data should be in long format. The variables include hemoglobin, gestational age, and adverse outcomes that have value 1 if the event is diagnosed concurrently or after the hemoglobin measurement, otherwise, the outcomes have value 0.
+
+The full data set will be divided into 5 sub data sets for the three trimesters during pregnancy and the 6-week and 6-month during postpartum(TBD). The decision limits for the adverse outcomes will be studied for each of the time periods. 
+
+## Visualize the risk of adverse outcome against hemoglobin
+
+According to the SAS macro [`%glmcurv9`](https://www.hsph.harvard.edu/donna-spiegelman/software/glmcurv9/), the strategy of fitting a "log-binomial spline model" is to first fit a log-binomial spline, if there is convergence issue, which is not uncommon in log-binomial type of models, then fit a robust poisson spline. Here we adopt a similar strategy: if log-binomial spline model has convergence issue, then we fit a robust poisson spline model. If any of the fitted risk values from poisson model is outside the range [0,1], then we fit a logistic spline model. The steps are:
+
+1. Select the number of knots for the spline model
+
+It's suggested the number of knots (`nk`) in spline models to be between 3 and 5. And we will use the AIC score as a selection criterion (the smaller the AIC, the better the model) to select the number of knots. 
+
+2. Test the non-linearity 
+
+ANOVA to show if the non-linearity between the risk and hemoglobin is significant.
+
+3. Plot the risk vs hemoglobin 
+
+Visualizing the risk of adverse outcome against hemoglobin using log-binomial restricted cubic splines.
+
+## Decision limits of hemoglobin associated with the adverse outcomes
+
+The flexible isotonic regression is able to detect multiple change points of the covariate that are associated with the change of the outcome. For each turning point, the outcome means/proportions in the adjacent two intervals are significantly different at the given level. We will first use the flexible isotonic model to identify the change points of the hemoglobin, then select the most plausible threshold taking into account the clinical views.
+
+To perform the flexible isotonic regression, we need to first manually define the covariate non-overlapping groups/intervals. We can either (1) group the hemoglobin values into different groups by rounding their values to 1 digit after the decimal; or (2) group the hemoglobin values by each 0.5 interval from the minimum to the maximum, which is used in the current model fitting. For example, if hemoglobin is between (7.0, 7.5), then assign the value to 7.5; or (3) group the hemoglobin values by the percentiles so that each group has the same number of observations. 
+
+## Weight outcomes by DOOR (TBD)
+
+We will use DOOR or GRS to weigh the overcomes. This is still under discussion. 
+
+# Adverse neonatal outcome - Preterm
+
+Preterm is defined as delivery prior to 37 completed weeks of gestation of a live born infant.
+
+## Data preparation
+Current data are from all PRiSMA enrolled participants who have live born baby as birthoutcome. Each infant at each visit will count as one observation. 
+
+## Visualize the risk of adverse outcome against hemoglobin
+### Log-binomial restricted cubic splines
+
+```{r}
+## load the rms (Regression Modeling Strategies) package by Frank Harrell
+library(rms)
+
+## set up the data
+ds <- datadist(df_inf_preterm)
+options(datadist = 'ds')
+```
+
+#### Select the number of knots for the spline model
+
+&nbsp;
+&nbsp;
+
+We will use the AIC score as a selection criterion (the smaller the AIC, the better the model) to select the number of knots between 3 to 5. The current result shows that model using `nk=4` has the lowest AIC score.
+
+```{r}
+## function to return AIC values of the models
+getAIC <- function(nk, model, rm_var, add_var_str){
+  
+  new_var <- sprintf(add_var_str, nk)
+  update_frml <- as.formula(sprintf(".~.-%s+%s", rm_var, new_var))
+  res <- (update(model, update_frml))$aic
+  names(res) <- new_var
+  return(res)
+  
+}
+
+## start with a model having 3 knots
+rms_logbin <- Glm(preterm ~ rcs(hb, 3), 
+                  family=binomial(link="log"), data = df_inf_preterm)
+
+## compare the AIC of models having 3,4,5 knots 
+sapply(3:5, getAIC, model = rms_logbin, 
+       rm_var = "rcs(hb, 3)", add_var_str = "rcs(hb, %d)")
+```
+
+```{r}
+## use log-binomial spline model with 4 knots
+rms_logbin <- Glm(preterm ~ rcs(hb, 4), 
+                  family=binomial(link="log"), data = df_inf_preterm,
+                  x = TRUE, y = TRUE)
+```
+
+#### Test the non-linearity 
+
+&nbsp;
+&nbsp;
+
+P value will indicate whether non-linearity between the risk and hemoglobin is significant.
+
+```{r}
+anova(rms_logbin)
+```
+
+#### Plot the risk vs hemoglobin
+
+```{r}
+xu <- seq(min(df_inf_preterm$hb), max(df_inf_preterm$hb), length=100)
+xu_pred <- Predict(rms_logbin, hb = xu)
+plot(xu, exp(xu_pred$yhat), type = "l", ylim = c(0,1), 
+     xlab = "Hemoglobin", ylab = "Preterm Risk", 
+     main = "Preterm Risk VS Hemoglobin \npoint: real data; line: spline curve")
+points(df_inf_preterm$hb, df_inf_preterm$preterm, pch = 16, col = gray(0.6), cex = 0.3,)
+```
+
+
+## Decision limits of hemoglobin associated with the adverse outcomes
+
+### Flexible isotonic regression
+
+We will try the three defined groups: 
+1. group the hemoglobin values into different groups by rounding their values to 1 digit after the decimal; 
+2. group the hemoglobin values by each 0.5 interval from the minimum to the maximum;
+3. group the hemoglobin values by the percentiles so that each group has similar number of observations.
+
+#### Group method 1
+
+```{r}
+# prepare data
+df_isotonic <- df_inf_preterm 
+x <- df_isotonic$group1 #!!! It's important to use the group info as x
+y <- df_isotonic$preterm
+o <- order(x)
+alpha.adjacency <- 0.05
+B <- 100
+
+source("changePoints_binary.R")
+# fit flexible isotonic model
+iso_mod <- flexstepreg(y, x, alpha.adjacency)
+
+# make plot
+plot(x, y, pch=19, col="gray50", cex = 0.3, xlab="Hemoglobin", ylab="Preterm risk", main="Preterm Risk vs Hemoglobin \nFlexible Isotonic Regression - group method 1")
+lines(x[o], iso_mod$estimates[o], col="black")
+lines(xu, exp(xu_pred$yhat), col="red")
+legend(x= 4.75, y = 0.95, cex = 0.8, lty = c(1,1), col = c("black","red"), legend = c("isotonic", "spline"))
+
+# find the pvalue by permutation
+iso_pvalue <- pvalue_permu(y, x, alpha.adjacency, stat = iso_mod$statistic, B)
+sum(iso_pvalue >= iso_pvalue[1])/length(iso_pvalue)
+```
+
+The nonparametric P-value will indicate whether the covariate effect is statistically significant to the event risk.
+
+#### Group method 2
+
+```{r}
+# prepare data
+df_isotonic <- df_inf_preterm 
+x <- df_isotonic$group2 #!!! It's important to use the group info as x
+y <- df_isotonic$preterm
+o <- order(x)
+alpha.adjacency <- 0.05
+B <- 100
+
+source("changePoints_binary.R")
+# fit flexible isotonic model
+iso_mod <- flexstepreg(y, x, alpha.adjacency)
+
+# make plot
+plot(x, y, pch=19, col="gray50", cex = 0.3, xlab="Hemoglobin", ylab="Preterm risk", main="Preterm Risk vs Hemoglobin \nFlexible Isotonic Regression - group method 2")
+lines(x[o], iso_mod$estimates[o], col="black")
+lines(xu, exp(xu_pred$yhat), col="red")
+legend(x= 5.2, y = 0.95, cex = 0.8, lty = c(1,1), col = c("black","red"), legend = c("isotonic", "spline"))
+
+# find the pvalue by permutation
+iso_pvalue <- pvalue_permu(y, x, alpha.adjacency, stat = iso_mod$statistic, B)
+sum(iso_pvalue >= iso_pvalue[1])/length(iso_pvalue)
+```
+
+The nonparametric P-value will indicate whether the covariate effect is statistically significant to the event risk.
+
+#### Group method 3
+
+```{r}
+# prepare data
+df_isotonic <- df_inf_preterm 
+x <- df_isotonic$group3 #!!! It's important to use the group info as x
+y <- df_isotonic$preterm
+o <- order(x)
+alpha.adjacency <- 0.05
+B <- 100
+
+source("changePoints_binary.R")
+iso_mod <- flexstepreg(y, x, alpha.adjacency)
+
+# make plot
+plot(x, y, pch=19, col="gray50", cex = 0.3, xlab="hemoglobin", ylab="event risk", main="Preterm Risk vs Hemoglobin \nFlexible Isotonic Regression - group method 3")
+lines(x[o], iso_mod$estimates[o], col="black")
+lines(xu, exp(xu_pred$yhat), col="red")
+legend(x=6.85, y = 0.95, lty = c(1,1), col = c("black","red"), legend = c("isotonic", "spline"))
+```
+
+```{r}
+# find the pvalue by permutation
+iso_pvalue <- pvalue_permu(y, x, alpha.adjacency, stat = iso_mod$statistic, B)
+sum(iso_pvalue >= iso_pvalue[1])/length(iso_pvalue)
+
+```
+The nonparametric P-value will indicate whether the covariate effect is statistically significant to the event risk.
+
+## Weight outcomes by DOOR (TBD)
+
+We will use DOOR or GRS to weight the overcomes.
+
+# Adverse neonatal outcome - Low Birth Weight
+
+Birth weight should be assessed at delivery or within 72 hours for home birth. Low birth weight is defined if birth weight is less than 2500g. 
+
+Sample size it too small to do analysis now.
+
+# R code for flexible isotonic regression
+
+Here attached is the modified R code used for fitting the flexible isotonic model.
+
+```{r, echo = TRUE}
+#########################################################
+
+# The code is adapted from the R code developed by Lai.
+# Lai Y. On the adaptive partition approach to the detection of multiple change-points. 
+# PLoS One. 2011 May; 6(5). https://home.gwu.edu/~ylai/research/FlexStepReg/Rcode.txt
+
+# The modified code is for binary response variable
+# (1) sse is changed to negative log-likelihood of binary response variable
+# (2) two-sample t-test is changed to two-proportion z-test or Fisher exact test for event counts
+
+#########################################################
+
+# get number of groups of covariates
+get.numbers <- function(x){
+  
+  # vector length of each unique x value
+  n <- tapply(x, x, length)
+  # an empty vector of double type
+  l <- double(length(n)+1)
+  # vector length accumulation
+  for(i in 1:length(n)){
+    l[i+1] <- l[i]+n[i]
+  }
+  
+  return(l)
+}
+
+# two-proportion test 
+t2p <- function(v, n1, n2){
+  
+  if(n1>1 && n2>1){
+    # first group
+    g1 <- v[1:n1]
+    m1 <- sum(g1 == 1)
+    # second group
+    g2 <- v[(n1+1):(n1+n2)]
+    m2 <- sum(g2 == 1)
+    # chi-square or fisher exact test
+    test_tb <- matrix(c(m1, n1-m1,
+                        m2, n2-m2), nrow = 2, byrow = TRUE)
+    chisq_res <- chisq.test(test_tb)
+    # if any cell of the expected frequency table less than 5, use fisher exact test
+    if (any(chisq_res$expected < 5)) {
+      fisher_res <- fisher.test(test_tb)
+      pvalue <- fisher_res$p.value
+    } else {
+      pvalue <- chisq_res$p.value
+    }
+    
+    if( is.na(pvalue) ){
+      return(1)
+    }else{
+       return(pvalue)
+    }
+    
+  }else{
+    return( 1 )
+  }
+}
+
+# flexible isotonic regression
+flexstepreg <- function(y, x, alpha.adjacency=1){
+  
+  o <- order(x, decreasing=FALSE)
+  x <- x[o]
+  y <- y[o]
+  
+  #sum of squares under the null
+  mu <- mean(y)
+  # ss0 <- sum( (y-mu)^2 )
+  loglik0 <- -sum(map_dbl(y, function(i) ifelse(mu==0, NA, log(mu^i*(1-mu)^(1-i)))))
+  
+  #estimate under the alternative (reduced isotonic)
+  g <- get.numbers(x)
+  link.rank.score <- vector("list", length(g)-1)
+  #print(g)
+  
+  # mean in the first group
+  mu <- mean(y[(g[1]+1):g[2]])
+  # sse of first group
+  # score <- sum( (y[(g[1]+1):g[2]]-mu)^2 )
+  score <- -sum(map_dbl(y[(g[1]+1):g[2]], function(i) ifelse(mu==0, NA, log(mu^i*(1-mu)^(1-i)))))
+  # add frist element to the triplet
+  link.rank.score[[1]] <- list(l=0,r=0,s=score)
+  for(i in 2:(length(g)-1)){
+    # mean of the first i groups
+    mu <- mean(y[(g[1]+1):g[i+1]])
+    # sse of the first i groups
+    # score <- sum( (y[(g[1]+1):g[i+1]]-mu)^2 )
+    score <- -sum(map_dbl(y[(g[1]+1):g[i+1]], function(i) ifelse(mu==0, NA, log(mu^i*(1-mu)^(1-i)))))
+    # second element
+    link.rank.score[[i]] <- list(l=0,r=0,s=score)
+    for(j in 1:(i-1)){
+      {
+        # mean of the (j+1)-th group to i-th group
+        mu <- mean(y[(g[j+1]+1):g[i+1]])
+        flag <- TRUE
+        k <- 1
+        while(flag & k<=length(link.rank.score[[j]]$l)){
+          link <- link.rank.score[[j]]$l[k]
+          # if sample t test is significant
+          if( t2p(y[(g[link+1]+1):g[i+1]], g[j+1]-g[link+1], g[i+1]-g[j+1]) < alpha.adjacency ){
+            flag <- FALSE
+            # score <- link.rank.score[[j]]$s[k] + sum( (y[(g[j+1]+1):g[i+1]]-mu)^2 )
+            score <- link.rank.score[[j]]$s[k] - sum(map_dbl(y[(g[j+1]+1):g[i+1]], function(i) ifelse(mu==0, NA, log(mu^i*(1-mu)^(1-i)))))
+            link.rank.score[[i]]$l <- c(link.rank.score[[i]]$l, j)
+            link.rank.score[[i]]$r <- c(link.rank.score[[i]]$r, k)
+            link.rank.score[[i]]$s <- c(link.rank.score[[i]]$s, score)
+          }
+          k <- k+1
+        }
+      }
+    }
+    # reorder by score
+    o.score <- order(link.rank.score[[i]]$s, decreasing=FALSE)
+    link.rank.score[[i]]$l <- link.rank.score[[i]]$l[o.score]
+    link.rank.score[[i]]$r <- link.rank.score[[i]]$r[o.score]
+    link.rank.score[[i]]$s <- link.rank.score[[i]]$s[o.score]
+  }
+  #print(link.rank.score)
+  loglik1 <- link.rank.score[[length(g)-1]]$s[1]
+  # statistic <- (ss0/ss1 - 1)*(length(y)-length(g)+1)/(length(g)-1-1)
+  statistic <- -2*(loglik1 - loglik0)
+  
+  i <- length(g)-1
+  partition <- g[i+1]
+  rank <- 1
+  while(rank>0){
+    i.temp <- i
+    i <- link.rank.score[[i.temp]]$l[rank]
+    rank <- link.rank.score[[i.temp]]$r[rank]
+    partition <- c(g[i+1], partition)
+  }
+  #print(partition)
+  
+  estimates <- double(length(y))
+  for(i in 2:length(partition)){
+    estimates[o][(partition[i-1]+1):partition[i]] <- mean( y[(partition[i-1]+1):partition[i]] )
+  }
+  
+  groups <- integer(length(y))
+  for(i in 2:length(partition)){
+    groups[o][(partition[i-1]+1):partition[i]] <- i-1
+  }
+  
+  return(list(groups=groups, estimates=estimates, statistic=statistic))
+}
+
+# get pvalue by permutation
+pvalue_permu <- function(y, x, alpha.adjacency, stat, B){
+  
+  for(i in 1:B){
+    stat <- c(stat, flexstepreg(sample(y), x, alpha.adjacency=alpha.adjacency)$statistic)
+    # print(i)
+  }
+  
+  # p-value
+  # sum(stat >= stat[1])/length(stat)
+  stat
+}
+
+# get confidence interval by bootstrap
+ci_bootstrap <- function(y, x, alpha.adjacency, estimate, B){
+  
+  bootstrap0 <- function(idx, y, x){
+    xs <- x[idx]
+    ys <- y[idx]
+    est <- rep(NA, length(y))
+    est[i] <- flexstepreg(ys, xs, alpha.adjacency=alpha.adjacency)$estimates
+    return(est)	
+  }
+
+  for(i in 1:B){
+    estimate <- cbind(estimate, bootstrap0(sample(c(1:length(y)), replace=T), y, x))
+    # print(i)
+  }
+  
+  data.frame(mean = tapply(x,x,mean),
+             lower = tapply(estimate[,-1], rep(x,B), quantile, 0.005, na.rm=T),
+             upper = tapply(estimate[,-1], rep(x,B), quantile, 0.995, na.rm=T))
+}
+```
+
+
+
+
+
