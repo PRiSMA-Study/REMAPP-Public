@@ -1,0 +1,538 @@
+---
+title: "Healthy Cohort Sensitivity Analysis"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: TRUE
+    toc_depth: 2
+    latex_engine: xelatex
+    keep_tex: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE) #, out.width = "100%"
+knitr::opts_chunk$set(out.width = "100%", fig.align = "center")
+library(tinytex)
+library(tidyverse)
+library(lubridate)
+library(gt)
+library(naniar)
+library(emo)
+library(webshot2)
+library(flextable)
+library(officer)
+library(kableExtra)
+library(ggh4x)
+
+load("derived_data/df_sensitive.rda")
+load("derived_data/df_hb_long_sensitive.rda")
+
+#crosstable format 1
+tb_theme1 <- function(matrix){
+  tb <- matrix %>% 
+    gt(
+  #show row names
+  rownames_to_stub = TRUE
+) %>% 
+  opt_align_table_header(align = "left") %>% 
+      #spanner column label
+  tab_spanner(
+    label = "Site",
+    columns = c(-Total)
+  ) %>% 
+    #use one of the default theme and customize
+  opt_stylize(style = 6, color = 'blue') %>% 
+  #title style
+    tab_style(
+    style = list(
+      cell_fill(color = "skyblue4"),
+      cell_text(weight = "bold"),
+      cell_text(v_align = "middle"),
+      cell_text(color = "white")
+    ),
+    locations = list(
+      cells_title()
+    )
+    ) %>% 
+  #stub head, spanner column, column label style
+  tab_style(
+    style = list(
+      cell_fill(color = "skyblue"),
+      cell_text(color = "black"),
+      cell_text(v_align = "middle") 
+    ),
+    locations = list(
+      cells_stubhead(),
+      cells_column_spanners(),
+      cells_column_labels() 
+    )
+    ) %>% 
+  #cell style
+  tab_style(
+    style = list(
+      cell_fill(color = "aliceblue"),
+      cell_text(v_align = "middle") 
+    ),
+    locations = list(
+      cells_stub()
+    ) 
+    ) %>% 
+    #column labels align center
+  tab_style(
+    style = list(
+      cell_text(align = "center") 
+    ),
+    locations = list(
+      cells_column_labels(columns = everything())
+    )
+    ) %>% 
+        #table body align right
+  tab_style(
+    style = list(
+      cell_text(align = "right") 
+    ),
+    locations = list(
+      cells_body(columns = everything())
+    ) 
+    ) %>%
+  fmt_markdown(columns = everything())
+} 
+
+#test table format 1
+tb_flextable <- function(data, caption, seq_id, bkm) {
+  tb <- qflextable(data)
+  tb <- set_table_properties(
+    tb, width = 0.8, layout = "autofit",
+    opts_pdf = list(tabcolsep = 3)) 
+  tb <- set_caption(tb,
+    caption = as_paragraph(
+as_chunk(caption, props = fp_text_default(font.family = "Cambria"))
+),
+    word_stylename = "Table Caption",
+    autonum = run_autonum(seq_id = seq_id, bkm = bkm)
+  )
+  tb <- bold(tb, bold = FALSE, part = "header")
+  tb
+}
+
+```
+
+
+### Includes data from synapse last updated: {.unlisted .unnumbered}
+### Pakistan : 2023-05-26 {.unlisted .unnumbered}
+### Kenya : 2023-05-26 {.unlisted .unnumbered}
+### Ghana : 2023-05-26 {.unlisted .unnumbered}
+<!-- ### Zambia : 2023-05-26 {.unlisted .unnumbered} -->
+
+\newpage
+## **1. Sensitivity Analysis - % Eligible by Site**
+```{r}
+matrix_percent <- df_sensitive %>% 
+  group_by(SITE) %>% 
+  summarise(
+    "Total participants: N" = n(),
+    "Analysis 1*: n (%)" = 
+      paste0(sum(eligible1 == 1, na.rm = TRUE),
+" (", format(sum(eligible1 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 2*: n (%)" = 
+      paste0(sum(eligible2 == 1, na.rm = TRUE),
+" (", format(sum(eligible2 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 3*: n (%)" = 
+      paste0(sum(eligible3 == 1, na.rm = TRUE),
+" (", format(sum(eligible3 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 4*: n (%)" = 
+      paste0(sum(eligible4 == 1, na.rm = TRUE),
+" (", format(sum(eligible4 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 5*: n (%)" = 
+      paste0(sum(eligible5 == 1, na.rm = TRUE),
+" (", format(sum(eligible5 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+     "Analysis 6*: n (%)" = 
+      paste0(sum(eligible6 == 1, na.rm = TRUE),
+" (", format(sum(eligible6 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 7*: n (%)" = 
+      paste0(sum(eligible7 == 1, na.rm = TRUE),
+" (", format(sum(eligible7 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 8*: n (%)" = 
+      paste0(sum(eligible8 == 1, na.rm = TRUE),
+" (", format(sum(eligible8 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 9*: n (%)" = 
+      paste0(sum(eligible9 == 1, na.rm = TRUE),
+" (", format(sum(eligible9 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 10*: n (%)" = 
+      paste0(sum(eligible10 == 1, na.rm = TRUE),
+" (", format(sum(eligible10 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 11*: n (%)" = 
+      paste0(sum(eligible11 == 1, na.rm = TRUE),
+" (", format(sum(eligible11 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 12*: n (%)" = 
+      paste0(sum(eligible12 == 1, na.rm = TRUE),
+" (", format(sum(eligible12 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 13*: n (%)" = 
+      paste0(sum(eligible13 == 1, na.rm = TRUE),
+" (", format(sum(eligible13 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 14*: n (%)" = 
+      paste0(sum(eligible14 == 1, na.rm = TRUE),
+" (", format(sum(eligible14 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 15*: n (%)" = 
+      paste0(sum(eligible15 == 1, na.rm = TRUE),
+" (", format(sum(eligible15 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 16*: n (%)" = 
+      paste0(sum(eligible16 == 1, na.rm = TRUE),
+" (", format(sum(eligible16 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 17*: n (%)" = 
+      paste0(sum(eligible17 == 1, na.rm = TRUE),
+" (", format(sum(eligible17 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 18*: n (%)" = 
+      paste0(sum(eligible18 == 1, na.rm = TRUE),
+" (", format(sum(eligible18 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 19*: n (%)" = 
+      paste0(sum(eligible19 == 1, na.rm = TRUE),
+" (", format(sum(eligible19 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 20*: n (%)" = 
+      paste0(sum(eligible20 == 1, na.rm = TRUE),
+" (", format(sum(eligible20 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+     "Analysis 21*: n (%)" = 
+      paste0(sum(eligible21 == 1, na.rm = TRUE),
+" (", format(sum(eligible21 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 22*: n (%)" = 
+      paste0(sum(eligible22 == 1, na.rm = TRUE),
+" (", format(sum(eligible22 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 23*: n (%)" = 
+      paste0(sum(eligible23 == 1, na.rm = TRUE),
+" (", format(sum(eligible23 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 24*: n (%)" = 
+      paste0(sum(eligible24 == 1, na.rm = TRUE),
+" (", format(sum(eligible24 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 25*: n (%)" =
+      paste0(sum(eligible25 == 1, na.rm = TRUE),
+" (", format(sum(eligible25 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 26*: n (%)" =
+      paste0(sum(eligible26 == 1, na.rm = TRUE),
+" (", format(sum(eligible26 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 27*: n (%)" =
+      paste0(sum(eligible27 == 1, na.rm = TRUE),
+" (", format(sum(eligible27 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 28*: n (%)" = 
+      paste0(sum(eligible28 == 1, na.rm = TRUE),
+" (", format(sum(eligible28 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 29*: n (%)" = 
+      paste0(sum(eligible29 == 1, na.rm = TRUE),
+" (", format(sum(eligible29 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 30*: n (%)" =
+      paste0(sum(eligible30 == 1, na.rm = TRUE),
+" (", format(sum(eligible30 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 31*: n (%)" =
+      paste0(sum(eligible31 == 1, na.rm = TRUE),
+" (", format(sum(eligible31 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 32*: n (%)" =
+      paste0(sum(eligible32 == 1, na.rm = TRUE),
+" (", format(sum(eligible32 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 33*: n (%)" =
+      paste0(sum(eligible33 == 1, na.rm = TRUE),
+" (", format(sum(eligible33 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")")
+  ) %>% 
+  t() %>% as.data.frame() %>% 
+  `colnames<-`(c(.[1,])) %>% 
+  slice(-1) %>% 
+  add_column(
+    .after = 6,
+    "Total" = df_sensitive %>% 
+      summarise(
+            "Total participants: N" = n(),
+    "Analysis 1: n(%)" = 
+      paste0(sum(eligible1 == 1, na.rm = TRUE),
+" (", format(sum(eligible1 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 2: n(%)" = 
+      paste0(sum(eligible2 == 1, na.rm = TRUE),
+" (", format(sum(eligible2 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 3: n(%)" = 
+      paste0(sum(eligible3 == 1, na.rm = TRUE),
+" (", format(sum(eligible3 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 4: n(%)" = 
+      paste0(sum(eligible4 == 1, na.rm = TRUE),
+" (", format(sum(eligible4 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 5: n(%)" = 
+      paste0(sum(eligible5 == 1, na.rm = TRUE),
+" (", format(sum(eligible5 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+     "Analysis 6: n(%)" = 
+      paste0(sum(eligible6 == 1, na.rm = TRUE),
+" (", format(sum(eligible6 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 7: n(%)" = 
+      paste0(sum(eligible7 == 1, na.rm = TRUE),
+" (", format(sum(eligible7 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 8*: n (%)" = 
+      paste0(sum(eligible8 == 1, na.rm = TRUE),
+" (", format(sum(eligible8 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 9*: n (%)" = 
+      paste0(sum(eligible9 == 1, na.rm = TRUE),
+" (", format(sum(eligible9 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 10*: n (%)" = 
+      paste0(sum(eligible10 == 1, na.rm = TRUE),
+" (", format(sum(eligible10 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"), 
+    "Analysis 11*: n (%)" = 
+      paste0(sum(eligible11 == 1, na.rm = TRUE),
+" (", format(sum(eligible11 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 12*: n (%)" = 
+      paste0(sum(eligible12 == 1, na.rm = TRUE),
+" (", format(sum(eligible12 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 13*: n (%)" = 
+      paste0(sum(eligible13 == 1, na.rm = TRUE),
+" (", format(sum(eligible13 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 14*: n (%)" = 
+      paste0(sum(eligible14 == 1, na.rm = TRUE),
+" (", format(sum(eligible14 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 15*: n (%)" = 
+      paste0(sum(eligible15 == 1, na.rm = TRUE),
+" (", format(sum(eligible15 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 16*: n (%)" = 
+      paste0(sum(eligible16 == 1, na.rm = TRUE),
+" (", format(sum(eligible16 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 17*: n (%)" = 
+      paste0(sum(eligible17 == 1, na.rm = TRUE),
+" (", format(sum(eligible17 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 18*: n (%)" = 
+      paste0(sum(eligible18 == 1, na.rm = TRUE),
+" (", format(sum(eligible18 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 19*: n (%)" = 
+      paste0(sum(eligible19 == 1, na.rm = TRUE),
+" (", format(sum(eligible19 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 20*: n (%)" = 
+      paste0(sum(eligible20 == 1, na.rm = TRUE),
+" (", format(sum(eligible20 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+     "Analysis 21*: n (%)" = 
+      paste0(sum(eligible21 == 1, na.rm = TRUE),
+" (", format(sum(eligible21 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")") ,
+    "Analysis 22*: n (%)" = 
+      paste0(sum(eligible22 == 1, na.rm = TRUE),
+" (", format(sum(eligible22 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 23*: n (%)" = 
+      paste0(sum(eligible23 == 1, na.rm = TRUE),
+" (", format(sum(eligible23 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 24*: n (%)" = 
+      paste0(sum(eligible24 == 1, na.rm = TRUE),
+" (", format(sum(eligible24 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 25*: n (%)" =
+      paste0(sum(eligible25 == 1, na.rm = TRUE),
+" (", format(sum(eligible25 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 26*: n (%)" =
+      paste0(sum(eligible26 == 1, na.rm = TRUE),
+" (", format(sum(eligible26 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 27*: n (%)" =
+      paste0(sum(eligible27 == 1, na.rm = TRUE),
+" (", format(sum(eligible27 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 28*: n (%)" = 
+      paste0(sum(eligible28 == 1, na.rm = TRUE),
+" (", format(sum(eligible28 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 29*: n (%)" = 
+      paste0(sum(eligible29 == 1, na.rm = TRUE),
+" (", format(sum(eligible29 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 30*: n (%)" =
+      paste0(sum(eligible30 == 1, na.rm = TRUE),
+" (", format(sum(eligible30 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 31*: n (%)" =
+      paste0(sum(eligible31 == 1, na.rm = TRUE),
+" (", format(sum(eligible31 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 32*: n (%)" =
+      paste0(sum(eligible32 == 1, na.rm = TRUE),
+" (", format(sum(eligible32 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")"),
+    "Analysis 33*: n (%)" =
+      paste0(sum(eligible33 == 1, na.rm = TRUE),
+" (", format(sum(eligible33 == 1, na.rm = TRUE)/n()*100, digits = 1, nsmall = 1), ")")
+      ) %>% 
+      t() %>% unlist()
+  )
+```
+
+
+```{r}
+#generate table
+table_percent <- tb_theme1(matrix_percent) %>%
+  #table title
+  tab_header(
+    title = md("**Sensitivity Analysis - % Eligible by Site**")
+  ) %>% 
+  # stubhead label
+  tab_stubhead(label = "Baseline Characteristics") 
+
+```
+
+```{r, out.width = '100%'}
+knitr::knit_print(table_percent)
+
+```
+\newpage
+>
+
+* Analysis1*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM
+* Analysis2*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_PREV_MISCARR
+* Analysis3*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_PREV_PRETERM_LBW
+* Analysis4*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_STILLBIRTH
+* Analysis5*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM,
+CRIT_COMPLICATION_NEW
+* Analysis6*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_PREV_MISCARR, CRIT_PREV_PRETERM_LBW, CRIT_STILLBIRTH, CRIT_COMPLICATION_NEW
+* Analysis7*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA 
+* Analysis8*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_PREV_MISCARR, CRIT_PREV_PRETERM_LBW, CRIT_STILLBIRTH, CRIT_COMPLICATION_NEW, CRIT_GA
+* Analysis9*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA and revise height criteria to >=150cm
+* Analysis10*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_PREV_MISCARR, CRIT_PREV_PRETERM_LBW, CRIT_STILLBIRTH, CRIT_COMPLICATION_NEW, CRIT_GA and revise height criteria to >=150cm
+* Analysis11*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_PREV_MISCARR, CRIT_GA
+* Analysis12*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_PREV_PRETERM_LBW, CRIT_GA
+* Analysis13*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_STILLBIRTH, CRIT_GA
+* Analysis14*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_COMPLICATION_NEW, CRIT_GA
+* Analysis15*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA and revise height criteria to >=150cm
+* Analysis16*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA, CRIT_PRETERM
+* Analysis17*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA, CRIT_LBW
+* Analysis18*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA, CRIT_STILLBIRTH
+* Analysis19*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA, CRIT_PREV_MISCARR
+* Analysis20*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA, CRIT_PRETERM, CRIT_LBW, CRIT_STILLBIRTH, CRIT_PREV_MISCARR
+* Analysis21*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA and preeclampsia/eclampsia
+* Analysis22*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA and premature rupture of membranes (before labor began)
+* Analysis23*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA and macrosomia (>4000g)"
+* Analysis24*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA and oligohydramnios"
+* Analysis25*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA and antepartum hemorrhage
+* Analysis26*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA and postpartum hemorrhage"
+* Analysis27*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA, CRIT_PRETERM, CRIT_LBW, CRIT_STILLBIRTH, CRIT_PREV_MISCARR and gestational diabetes, preeclampsia/eclampsia, premature rupture of membranes (before labor began), macrosomia (>4000g), oligohydramnios, antepartum hemorrhage, postpartum hemorrhage
+* Analysis28*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA, CRIT_PRETERM, CRIT_STILLBIRTH, CRIT_PREV_MISCARR and gestational diabetes, preeclampsia/eclampsia, premature rupture of membranes (before labor began), macrosomia (>4000g), oligohydramnios, antepartum hemorrhage, postpartum hemorrhage
+* Analysis29*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA, CRIT_STILLBIRTH, CRIT_PREV_MISCARR and gestational diabetes, preeclampsia/eclampsia, premature rupture of membranes (before labor began), macrosomia (>4000g), oligohydramnios, antepartum hemorrhage, postpartum hemorrhage 
+* Analysis30*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA, CRIT_PRETERM, CRIT_PREV_MISCARR and gestational diabetes, preeclampsia/eclampsia, premature rupture of membranes (before labor began), macrosomia (>4000g), oligohydramnios, antepartum hemorrhage, postpartum hemorrhage
+* Analysis31*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA, CRIT_PREV_MISCARR and gestational diabetes, preeclampsia/eclampsia, premature rupture of membranes (before labor began), macrosomia (>4000g), oligohydramnios, antepartum hemorrhage, postpartum hemorrhage
+* Analysis32*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA, CRIT_PREV_MISCARR and gestational diabetes, preeclampsia/eclampsia, premature rupture of membranes (before labor began), macrosomia (>4000g), oligohydramnios, antepartum hemorrhage, postpartum hemorrhage and revise height criteria to >=150cm
+* Analysis33*: exclude criteria CRIT_HEMOGLOBINOPATHIES, CRIT_IRON, CRIT_INFLAM, CRIT_GA, CRIT_PREV_MISCARR, CRIT_PRETERM, CRIT_COMPLICATION_NEW and revise height criteria to >=150cm
+- Note: excluding CRIT_PRETERM and CRIT_LBW together is equal to excluding original CRIT_PREV_PRETERM_LBW
+- Note: All analysis above meet the criteria CRIT_UNPL_CESARIAN. 
+
+```{r}
+df_fpr <- df_hb_long_sensitive %>%
+  dplyr::select(SITE, ga_wks, hb, starts_with("eligible")) %>% 
+  filter(!is.na(hb) & !is.na(ga_wks))
+
+# call package gamlss to fit FPR model
+library(gamlss)
+
+# fit a second-order FPR model
+con <- gamlss.control(trace = FALSE)
+fpr_mod <- gamlss(hb ~ fp(ga_wks, 2),
+  sigma.fo = ~ fp(ga_wks, 2),
+  data = df_fpr, control = con
+)
+```
+
+\newpage
+
+## **2. Sensitivity analysis - Fractional polynomial regression - Pakistan**
+
+### *Compare sample under each analysis \textcolor{red}{(red line)} with all PRiSMA enrolled participants (black line) by using centile curves - (2.5, 50, 97.5)th centiles with FPR model*
+
+```{r , fig.show="hold", out.width="100%", fig.height = 7.5, echo=FALSE, results='hide'}
+
+# centiles
+cents <- c(2.5, 50, 97.5)
+
+# a function to plot centile curves after excluding certain site
+fpr_mod_eligible <- function(s){
+  
+  # remove the selected site data
+  dat <- df_fpr %>% filter(eval(parse(text = paste0("eligible",s,"== 1"))))
+  # fit a FPR model on the rest data
+  mod <- gamlss(hb ~ fp(ga_wks, 2),
+                sigma.fo = ~ fp(ga_wks, 2),
+                data = dat, control = con)
+
+  x <- df_fpr$ga_wks
+  # predict hemoglobin centiles by FPR model fitted on all data
+  y_fpr_mod <- centiles.pred(fpr_mod,
+                         xname = "ga_wks", xvalues = x,
+                         type = c("centiles"), cent = cents, data = df_fpr)
+  # predict hemoglobin centiles by FPR model fitted on all data excluding the site
+  y_mod <- centiles.pred(mod,
+                         xname = "ga_wks", xvalues = x,
+                         type = c("centiles"), cent = cents, data = dat)
+  # compare the centile curves
+  plot(y_fpr_mod[,1], y_fpr_mod[,2],
+       ylim = c(6,16),xlim = c(10,50),
+       type="n",
+       xlab = "Gestational Age (weeks)", ylab = "CBC Hb (g/dL)",
+       main = paste0("Analysis",s))
+  for(i in 2:(length(cents)+1)) {
+    lines(y_fpr_mod[,1], y_fpr_mod[,i], col = "black")
+    lines(y_mod[,1], y_mod[,i], col = "red")
+  }
+}
+
+
+newpar <- par(mfrow = c(3,2), mar = par("mar") + c(0, 1, 0, 0),
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+              col.lab = "blue4", pch = "+", cex = 0.5, cex.lab = 1.2,
+              cex.axis = 1, cex.main = 1.2)
+
+for (z in 1:6){
+  print(fpr_mod_eligible(z))
+}
+par(newpar)
+```
+
+\newpage
+
+```{r , fig.show="hold", out.width="100%", fig.height = 7.5, echo=FALSE, results='hide'}
+newpar <- par(mfrow = c(3,2), mar = par("mar") + c(0, 1, 0, 0),
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+              col.lab = "blue4", pch = "+", cex = 0.5, cex.lab = 1.2,
+              cex.axis = 1, cex.main = 1.2)
+for (z in 7:33){
+  print(fpr_mod_eligible(z))
+}
+
+par(newpar)
+```
+
+\newpage
+## **3. Fractional polynomial regression - Pakistan**
+
+```{r centile plot, results='hide'}
+# make centile plots based on the fitted FPR model
+cents <- c(2.5, 5, 10, 50, 90, 95, 97.5)
+fpr_mod_centile <- function(t){
+  #define data
+  df_fpr <- df_hb_long_sensitive  %>% 
+    dplyr::select(SITE, ga_wks, hb, starts_with("eligible")) %>%
+    filter(!is.na(hb) & !is.na(ga_wks)) %>% 
+    filter(eval(parse(text = paste0("eligible",t,"== 1"))))
+
+  #model
+  fpr_mod <- gamlss(hb ~ fp(ga_wks, 2),
+  sigma.fo = ~ fp(ga_wks, 2),
+  data = df_fpr, control = con)
+  
+  centile1 <- centiles(fpr_mod,
+  xvar = df_fpr$ga_wks, cent = cents,
+  xlab = "Gestational Age (weeks)", ylab = "CBC Hb (g/dL)",
+  main = paste0(
+    "Analysis",t,". Centile curves using FPR model\n(2.5, 5, 10, 50, 90, 95, 97.5)th centiles"),
+  bg = "transparent",
+  legend = FALSE, 
+  xlim = range(10,50), ylim = range(6,16),
+  pch = 15, cex = 0.4, col = "lightgrey",
+  col.cent = c("red", "blue", "purple", "green", "purple", "blue", "red"),
+  )
+legend("topright", inset = c(-0.25,0),
+       legend = c(2.5, 5, 10, 50, 90, 95, 97.5), #, "WHO"
+       col = c("red", "blue", "purple", "green", "purple", "blue", "red"), 
+       lty = c(1,1,1,1,1,1,1,2))
+}
+
+```
+
+```{r , fig.show="hold", out.width="100%", fig.height = 8, echo=FALSE, results='hide'}
+newpar2 <- par(mfrow = c(2,1), mar=c(4, 4, 4, 7), xpd=TRUE)
+for (z in 1:2){
+  print(fpr_mod_centile(z))
+}
+par(newpar2)
+```
+\newpage
+```{r , fig.show="hold", out.width="100%", fig.height = 8, echo=FALSE, results='hide'}
+newpar2 <- par(mfrow = c(2,1), mar=c(4, 4, 4, 7), xpd=TRUE)
+for (z in 3:33){
+  print(fpr_mod_centile(z))
+}
+par(newpar2)
+```
