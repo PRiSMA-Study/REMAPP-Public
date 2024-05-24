@@ -337,8 +337,8 @@ df_hb_long1_all <- mnh08_hb %>%
     trimester = case_when(
       M08_TYPE_VISIT >= 6 ~ NA_real_,
       ga_wks > 0 & ga_wks < 14 ~ 1,
-      ga_wks >= 14 & ga_wks < 27 ~ 2,
-      ga_wks >= 27 & ga_wks <= 40 ~ 3,
+      ga_wks >= 14 & ga_wks < 28 ~ 2,
+      ga_wks >= 28 & ga_wks <= 43 ~ 3,
       TRUE ~ NA_real_
     ), 
     hb_alti = case_when(
