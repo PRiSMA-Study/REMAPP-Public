@@ -4,7 +4,7 @@
 
 Fractional polynomial regression on healthy cohort data.
 
-#### :pushpin: Updated on 2023-05-21
+#### :pushpin: Updated on 2024-12-11
 #### :pushpin: Originally drafted by: Xiaoyan Hu (xyh@gwu.edu)
 
 ## File structure
