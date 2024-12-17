@@ -9,7 +9,9 @@ To describe the underlying contributing factors for anemia during pregnancy.
 
 ## Part A
 
-**Sample** : Aim 2 cohort of 1200-2000 women at study enrollment per site
+**Sample** : 
+
+Aim 2 cohort of 1200-2000 women at study enrollment per site
 
 **Method** : 
 
@@ -19,7 +21,9 @@ To describe the underlying contributing factors for anemia during pregnancy.
 Reference: Sjölander, A. (2018). Estimation of causal effect measures with the R-package stdReg. European journal of epidemiology, 33(9), 847-858.
 
 ## Part B
-**Sample** : Aim 3 sample of 300 women per clinical site (100 from each trimester of pregnancy)
+**Sample** : 
+
+Aim 3 sample of 300 women per clinical site (100 from each trimester of pregnancy)
 
 **Method** : 
 
