@@ -18,6 +18,7 @@ Aim 2 cohort of 1200-2000 women at study enrollment per site
 1. Relative risk: For non-distal risk factors, Relative Risk (RR) is derived from univariate GEE (log-binomial) model adjusted for site and distal risk factors (demographic). For distal risk factors, Relative Risk (RR) is derived from multivariate GEE model. If log-binomial GEE model fails to converge, modified Poisson GEE model will be implemented.
 
 2. Population attributable risk (PAR) : PAR from the perspective of causal effect using the stdReg R package. 
+
 Reference: Sjölander, A. (2018). Estimation of causal effect measures with the R-package stdReg. European journal of epidemiology, 33(9), 847-858.
 
 ## Part B
