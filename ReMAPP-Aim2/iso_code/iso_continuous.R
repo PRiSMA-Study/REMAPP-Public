@@ -1,15 +1,11 @@
 #*******************************************************************************
-
 # The code is adapted from the R code developed by Lai.
 # Lai Y. On the adaptive partition approach to the detection of multiple change-points. 
 # PLoS One. 2011 May; 6(5). https://home.gwu.edu/~ylai/research/flexstepreg_bi/Rcode.txt
 
 # The modified code is for continuous variable with/out fixed effect and/or random_effect
-# (1) sse is changed to negative log-likelihood of binary response variable !!!
-# (2) two-sample t-test is changed to two-proportion z-test or Fisher exact test for event counts!!!
 
 #The code is modified by Xiaoyan Hu, who can be reached by xyh@gwu.edu
-
 #*******************************************************************************
 library(lme4)
 
@@ -136,11 +132,10 @@ t2p_lmer <- function(v, n1, n2, tail, covar1=NULL, covar2=NULL, random_effect=NU
       # Check if row_index is not empty
       if (length(row_index) > 0) {
         tempT <- summary_coef[row_index, "t value"]
-        ### "changing "z value" to "t value"
         pvalue<-2*pnorm(q=abs(tempT), lower.tail=FALSE)
       } 
       else {
-        pvalue <- 1  # Or handle the case where the coefficient name doesn't exist
+        pvalue <- 1  # handle the case where the coefficient name doesn't exist
       }
     }
     
@@ -154,11 +149,10 @@ t2p_lmer <- function(v, n1, n2, tail, covar1=NULL, covar2=NULL, random_effect=NU
     # Check if row_index is not empty
     if (length(row_index) > 0) {
       tempT <- summary_coef[row_index, "t value"]
-      ### "changing "z value" to "t value"
       pvalue<-2*pnorm(q=abs(tempT), lower.tail=FALSE)
     } 
     else {
-      pvalue <- 1  # Or handle the case where the coefficient name doesn't exist
+      pvalue <- 1  #handle the case where the coefficient name doesn't exist
     }
   }
   
@@ -173,7 +167,6 @@ t2p_lmer <- function(v, n1, n2, tail, covar1=NULL, covar2=NULL, random_effect=NU
 flexstepreg_lmer <- function(y, x, covar1=NULL, covar2=NULL, random_effect=NULL, alpha.adjacency = 1, tail.two = "upper") {
   kk<-0
   tail.two <- match.arg(tail.two, c("upper", "lower", "two"))
-  # print(colnames(data.frame(y = y, x = x, covar = covar)))
   o <- order(x, decreasing = FALSE)
   x <- x[o]
   y <- y[o]
@@ -184,8 +177,6 @@ flexstepreg_lmer <- function(y, x, covar1=NULL, covar2=NULL, random_effect=NULL,
   if(is.null(random_effect)){
     random_effect <- random_effect[o]
   }
-  
-  # print(colnames(data.frame(y = y, x = x, covar = covar)))
   
   mu <- mean(y)
   ss0 <- sum((y - mu)^2)
@@ -226,9 +217,7 @@ flexstepreg_lmer <- function(y, x, covar1=NULL, covar2=NULL, random_effect=NULL,
         #temproary debugging
         kk<-kk+1
         show(kk)
-        # if(kk==6329){
-        #   kk=kk
-        # }
+
         if (tempN1 < 50 || tempN2 < 50) {
           flag <- FALSE  # Skip to the next iteration
         } else {

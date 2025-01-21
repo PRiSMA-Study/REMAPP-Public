@@ -1,0 +1,276 @@
+---
+title: "<span style='font-size: 18px'> <span style='text-align: center'> ReMAPP Aim 2 - Projected heatmap of outcomes"
+date: "Issued: `r Sys.Date()`"
+output:
+  pdf_document:
+    toc: no
+    toc_depth: 4
+    number_sections: true
+    latex_engine: xelatex
+    keep_tex: true
+  toc-title: Table of Contents
+---
+
+**Date of included data upload to Synapse: ** 2024-06-28
+
+
+\tableofcontents
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(fig.width = 5, fig.height = 4, fig.align = "center")
+library(rmarkdown)
+library(knitr)
+library(tidyverse)
+library(wesanderson)
+library(officer)
+library(flextable)
+library(gt)
+library(VennDiagram)
+library(rms)
+
+load("derived_data/df_heat_inf.rda")
+load("derived_data/df_heat_mat.rda")
+load("derived_data/df_maternal.rda")
+
+```
+
+
+\newpage
+```{r ratio-denom}
+#calculate maximum GA during pregnancy
+df_max_ga <- df_maternal %>% 
+  select(MOMID, PREGID, EST_CONCEP_DATE, starts_with("M08_LBSTDAT_")) %>% 
+  pivot_longer(starts_with("M08_LBSTDAT_"), 
+               names_to = "visit_type", 
+               values_to = "lab_date",
+               names_transform = list(visit_type = function(names) {
+  gsub("^M08_LBSTDAT_", "", names)
+})) %>% 
+  mutate(lab_date = replace(lab_date, lab_date %in% c("1905-05-05", "1907-07-07", ""), NA)) %>% 
+  filter(!is.na(lab_date)) %>% 
+  mutate(ga_wks = case_when(
+      as.numeric(visit_type) >= 6 ~ NA_real_,
+      as.numeric(visit_type) < 6 ~ as.numeric(ymd(lab_date) - ymd(EST_CONCEP_DATE))/7
+    )) %>% 
+  #remove NA and outliers
+  filter(ga_wks > 0 & ga_wks < 43) %>% 
+  group_by(MOMID, PREGID) %>% 
+  #calculate max ga for each mom
+  reframe(max_ga = max(ga_wks, na.rm = TRUE)) 
+
+#sum of max ga of moms with ga info
+ratio_denom <- df_max_ga  %>%  
+  reframe(total_ga = sum(max_ga, na.rm = TRUE)) %>% 
+  as.numeric()
+```
+
+
+# Projected Heatmap for Infant Outcome 
+
+## Projected Heatmap for Infant Outcome (1600 enrollment per site)
+```{r projected heatmap infant, out.width='100%'}
+# Define custom colors
+colors <- c("#F11B00", "#EF5703", "#EC7A05", "#E79805", "#E3B710", "#DCCB4E", 
+            "#A5C2A3", "#6FB2C1") 
+breaks <- c(0, 20, 40, 60, 80, 100, 200, 300, 400)
+labels <- as.character(breaks)
+
+#calculate expected sample size for all sites after data collection
+exp_n_1600 = 1600*6
+
+#ratio: expected data/current data
+ratio_1600 = exp_n_1600*40/ratio_denom
+
+#projected data
+pj_heat_inf_1600 <- df_heat_inf %>% 
+  mutate(pj_count_1600 = count*ratio_1600) %>% 
+  filter(hb < 19)
+
+#Create the heatmap
+ggplot(pj_heat_inf_1600, aes(x = as.factor(hb), y = outcome, fill = pj_count_1600)) +
+  geom_tile(color = "white") +
+  labs(x = "Hemoglobin (g/dL)", y = "", 
+       title = "") + #Projected event distribution assuming 1600 enrollment per site
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8, angle = 0),
+        axis.title = element_text(size = 9),
+        title = element_text(size = 9),
+        legend.position = "bottom",
+        legend.text = element_text(size = 7), 
+        legend.title = element_text(size = 8),
+        legend.key.width = grid::unit(1.4, "cm"), 
+        legend.key.height = grid::unit(0.3, "cm"),
+        plot.margin = margin(t = 0, r = 0, b = 0, l = 0), 
+        plot.title = element_text(hjust = 1.1)
+        ) +
+    scale_fill_gradientn(
+    colors = colors,
+    breaks = breaks,
+    labels = labels,
+    values = scales::rescale(breaks),  
+    name = "Projected Count"
+  ) +
+  coord_fixed(ratio = 1.2) +
+      guides(fill = guide_colourbar(title.position = "top",
+                                title.hjust = .5,
+                                label.position = "bottom"))
+
+```
+* Heat map is showing the projected count of outcome if data collection completes (1600 enrolled per site)
+
+## Projected Heatmap for Infant Outcome (2000 enrollment per site)
+```{r projected heatmap infant 2000, out.width='100%'}
+#customized color
+colors <- c("#F11B00", "#EF5703", "#EC7A05", "#E79805", "#E3B710", "#DCCB4E", 
+            "#A5C2A3", "#6FB2C1", "#0073A8") 
+breaks <- c(0, 20, 40, 60, 80, 100, 200, 300, 400, 500)
+labels <- as.character(breaks)
+
+exp_n_2000 = 2000*6
+
+#ratio: expected data/current data
+ratio_2000 = exp_n_2000*40/ratio_denom
+
+#projected data
+pj_heat_inf_2000 <- df_heat_inf %>% 
+  mutate(pj_count_2000 = count*ratio_2000) %>% 
+  filter(hb < 19)
+
+color_stops <- c(0, 0.02, 0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18,
+                 0.2, 0.22, 0.24, 0.26, 0.28, 0.3, 0.32, 0.34, 0.36, 0.38, 0.4, 0.42, 0.71, 1)
+
+#Create the heatmap
+ggplot(pj_heat_inf_2000, aes(x = as.factor(hb), y = outcome, fill = pj_count_2000)) +
+  geom_tile(color = "white") +
+  labs(x = "Hemoglobin (g/dL)", y = "", 
+       title = "") + 
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8, angle = 0),
+        axis.title = element_text(size = 9),
+        title = element_text(size = 10),
+        legend.position = "bottom",
+        legend.text = element_text(size = 7), 
+        legend.title = element_text(size = 8),
+        legend.key.width = grid::unit(1.6, "cm"), 
+        legend.key.height = grid::unit(0.3, "cm"),
+        plot.margin = margin(t = 0, r = 0, b = 0, l = 0),
+        plot.title = element_text(hjust = 1.1)
+        ) +
+    scale_fill_gradientn(
+    colors = colors,
+    breaks = breaks,
+    labels = labels,
+    values = scales::rescale(breaks), 
+    name = "Projected Count"
+  ) +
+  coord_fixed(ratio = 1.2) +
+      guides(fill = guide_colourbar(title.position = "top",
+                                title.hjust = .5,
+                                label.position = "bottom"))
+
+```
+* Heat map is showing the projected count of outcome if data collection completes (2000 enrolled per site)
+
+# Projected Heatmap for Maternal Outcome 
+
+## Projected Heatmap for Maternal Outcome (1600 enrollment per site)
+```{r, out.width='100%'}
+#customized color
+colors <- c("#F11B00", "#EF5703", "#EC7A05", "#E79805", "#E3B710", "#DCCB4E", 
+            "#BDC881", "#A5C2A3", "#91BAB6", "#6FB2C1", "#3A9AB2")
+breaks <- c(0, 20, 40, 60, 80, 100, 200, 300, 400, 500, 600, 700)
+
+labels <- c("0","20", "", "60", "", "100", "200", "300", "400", "500", "600", "700")
+
+pj_heat_mat_1600 <- df_heat_mat %>% 
+  mutate(pj_count_1600 = count*ratio_1600) %>% 
+  add_row(hb = c(21,21,19,20,22), 
+          outcome = c("Postpartum anemia at PNC6", "Postpartum anemia at PNC26", 
+                      "Likelihood of depression", "Likelihood of depression", "Likelihood of depression"), 
+          pj_count_1600 = c(0,0,0,0,0)) %>% 
+  filter(hb < 19)
+
+#Create the heatmap
+ggplot(pj_heat_mat_1600, aes(x = as.factor(hb), y = outcome, fill = pj_count_1600)) +
+  geom_tile(color = "white") +
+  labs(x = "Hemoglobin (g/dL)", y = "", 
+       title = "") + 
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8, angle = 0),
+        axis.title = element_text(size = 9),
+        title = element_text(size = 10),
+        legend.position = "bottom",
+        legend.text = element_text(size = 7), 
+        legend.title = element_text(size = 8),
+        legend.key.width = grid::unit(1.7, "cm"), 
+        legend.key.height = grid::unit(0.3, "cm"),
+        legend.box.margin = margin(t = 0, r = 3, b = 0, l = 0),
+        plot.margin = margin(t = 0, r = 0, b = 0, l = 0),
+        plot.title = element_text(hjust = 1.05)
+        ) +
+    scale_fill_gradientn(
+    colors = colors,
+    breaks = breaks,
+    labels = labels,
+    values = scales::rescale(breaks),  
+    name = "Projected Count"
+  ) +
+  coord_fixed(ratio = 1.2) +
+    guides(fill = guide_colourbar(title.position = "top",
+                                title.hjust = .5,
+                                label.position = "bottom"))
+
+```
+* Heat map is showing the projected count of outcome if data collection completes (1600 enrolled per site)
+
+## Projected Heatmap for Maternal Outcome (2000 enrollment per site)
+```{r, out.width='100%'}
+#customized color
+colors <- c("#F11B00", "#EF5703", "#EC7A05", "#E79805", "#E3B710", "#DCCB4E", 
+            "#BDC881", "#A5C2A3", "#91BAB6", "#6FB2C1", "#3A9AB2", "#0073A8" )
+breaks <- c(0, 20, 40, 60, 80, 100, 200, 300, 400, 500, 600, 700, 800)
+
+labels <- c("0","20", "", "60", "", "100", "200", "300", "400", "500", "600", "700", "800")
+
+pj_heat_mat_2000 <- df_heat_mat %>% 
+  mutate(pj_count_2000 = count*ratio_2000) %>% 
+  mutate(pj_count_2000 = ifelse(is.na(pj_count_2000), 0, pj_count_2000)) %>% 
+  add_row(hb = c(21,21,19,20,22), 
+          outcome = c("Postpartum anemia at PNC6", "Postpartum anemia at PNC26", 
+                      "Likelihood of depression", "Likelihood of depression", "Likelihood of depression"), 
+          pj_count_2000 = c(0,0,0,0,0)) %>% 
+  filter(hb < 19)
+
+#Create the heatmap
+ggplot(pj_heat_mat_2000, aes(x = as.factor(hb), y = outcome, fill = pj_count_2000)) +
+  geom_tile(color = "white") +
+  labs(x = "Hemoglobin (g/dL)", y = "", 
+       title = "", fill = "Projected Count") + 
+  theme_bw() +
+  theme(axis.text = element_text(size = 8),
+        axis.title = element_text(size = 9),
+        title = element_text(size = 10),
+        legend.position = "bottom",
+        legend.text = element_text(size = 7), 
+        legend.title = element_text(size = 8), 
+        legend.key.width = grid::unit(1.7, "cm"), 
+        legend.key.height = grid::unit(0.3, "cm"),
+        legend.box.margin = margin(t = 0, r = 3, b = 0, l = -1)
+        ) +
+    scale_fill_gradientn(
+    colors = colors,
+    breaks = breaks,
+    labels = labels,
+    values = scales::rescale(breaks)) +
+  coord_fixed(ratio = 1.2) +
+  guides(fill = guide_colourbar(title.position = "top",
+                                title.hjust = .5,
+                                label.position = "bottom"))
+
+
+```
+* Heat map is showing the projected count of outcome if data collection completes (2000 per site)

@@ -1,3 +1,13 @@
+#****************************************************************************
+# The code is adapted from the R code developed by Lai.
+# Lai Y. On the adaptive partition approach to the detection of multiple change-points. 
+# PLoS One. 2011 May; 6(5). https://home.gwu.edu/~ylai/research/flexstepreg_bi/Rcode.txt
+
+# The modified code is for binary variable with/out fixed effect and/or random_effect
+
+#The code is modified by Xiaoyan Hu, who can be reached by xyh@gwu.edu
+#****************************************************************************
+
 library(lme4)
 library(lmerTest)
 library(tidyverse)
@@ -13,10 +23,8 @@ get.numbers_glmer <- function(x) {
 }
 
 t2p_glmer <- function(v, n1, n2, tail, covar1=NULL, covar2=NULL, random_effect=NULL) {
-  # if (n1 < 2 || n2 < 2) { #revise min# in groups 
   if (n1 < 2 || n2 < 2) {
     return
-    
     (1) 
   }
   
@@ -185,7 +193,6 @@ t2p_glmer <- function(v, n1, n2, tail, covar1=NULL, covar2=NULL, random_effect=N
 flexstepreg_glmer <- function(y, x, covar1=NULL, covar2=NULL, random_effect=NULL, alpha.adjacency = 1, tail.two = "upper") {
   kk<-0
   tail.two <- match.arg(tail.two, c("upper", "lower", "two"))
-  # print(colnames(data.frame(y = y, x = x, covar = covar)))
   o <- order(x, decreasing = FALSE)
   x <- x[o]
   y <- y[o]
@@ -196,8 +203,6 @@ flexstepreg_glmer <- function(y, x, covar1=NULL, covar2=NULL, random_effect=NULL
   if(!is.null(random_effect)){
     random_effect <- random_effect[o]
   }
-  
-  # print(colnames(data.frame(y = y, x = x, covar = covar)))
   
   mu <- mean(y)
   ss0 <- sum((y - mu)^2)
@@ -286,7 +291,6 @@ flexstepreg_glmer <- function(y, x, covar1=NULL, covar2=NULL, random_effect=NULL
   for (i in 2:length(partition)) {
     groups[o][(partition[i - 1] + 1):partition[i]] <- i - 1
   }
-  
   
   #calculate the break points
   brkPoints<-rep(0,length(partition)-2)

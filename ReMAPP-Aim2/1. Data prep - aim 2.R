@@ -6,30 +6,21 @@
 
 library(tidyverse)
 library(lubridate)
-library(naniar)
 library(growthstandards) ## INTERGROWTH PACKAGE
 library(haven)
 
-UploadDate = "2024-06-28"
+UploadDate = "2024-09-20"
 
 #*****************************************************************************
 #*1. Load data
 #*****************************************************************************
 #load MAT_ENROLL 
-MAT_ENROLL <- read.csv(paste0("Z:/Outcome Data/",UploadDate,"/MAT_ENROLL.csv"))
+MAT_ENROLL <- read_dta(paste0("Z:/Outcome Data/",UploadDate,"/MAT_ENROLL.dta"))
 save(MAT_ENROLL, file = "derived_data/MAT_ENROLL")
 
 #load INF_OUTCOMES(composite, preterm37, lbw2500, sga10)
 INF_OUTCOMES <- read.csv(paste0("Z:/Outcome Data/",UploadDate,"/INF_OUTCOMES.csv")) 
 save(INF_OUTCOMES, file = "derived_data/INF_OUTCOMES")
-INF_OUTCOMES <- INF_OUTCOMES %>% 
-  filter(!is.na(INFANTID)) %>% 
-  select(SITE, MOMID, PREGID, INFANTID,
-         LBW2500_PRISMA, LBW1500_PRISMA, 
-         PRETERMBIRTH_LT37, PRETERMBIRTH_LT34, 
-         SGA_CENTILE, 
-         INF_ASPH,
-         INF_PSBI_IPC, INF_PSBI_PNC0, INF_PSBI_PNC1, INF_PSBI_PNC4, INF_PSBI_DENOM)
 
 # load MAT_ENDPOINS
 MAT_ENDPOINTS <- read_dta(paste0("Z:/Outcome Data/",UploadDate,"/MAT_ENDPOINTS.dta")) 
@@ -61,8 +52,8 @@ prep_mnh25 <- read.csv(paste0("Z:/Stacked Data/",UploadDate,"/mnh25_merged.csv")
   group_by(SITE, MOMID, PREGID, M25_TYPE_VISIT) %>% 
   mutate(n = n()) %>% 
   filter(n == 1) %>% 
-  replace_with_na_all(condition = ~. < 0) %>%
-  replace_with_na_all(condition = ~. %in% c(55,77)) %>% 
+  mutate_all(~ if_else(. < 0, NA, .)) %>% 
+  mutate_all(~ if_else(. %in% c(55,77), NA, .)) %>% 
   ungroup() 
 mnh25 <- prep_mnh25 %>% 
   mutate(
@@ -214,8 +205,8 @@ prep_mnh26 <- read.csv(paste0("Z:/Stacked Data/",UploadDate,"/mnh26_merged.csv")
   mutate(n = n()) %>% 
   filter(n == 1) %>% 
   ungroup() %>% 
-  replace_with_na_all(condition = ~. < 0) %>%
-  replace_with_na_all(condition = ~. %in% c(55,66,77))
+  mutate_all(~ if_else(. < 0, NA, .)) %>% 
+  mutate_all(~ if_else(. %in% c(55,66,77), NA, .)) 
 mnh26 <- prep_mnh26 %>% 
   mutate(
     ga_wks_26 = case_when(
@@ -250,11 +241,17 @@ MAT_HEMORRHAGE <- read.csv(paste0("Z:/Outcome Data/",UploadDate,"/MAT_HEMORRHAGE
 MAT_ANEMIA <- read_dta(paste0("Z:/Outcome Data/",UploadDate,"/MAT_ANEMIA.dta")) %>% 
   select(SITE, MOMID, PREGID, ANEMIA_PNC6, ANEMIA_PNC26)
 
+# load MAT_HDP
+MAT_HDP <- read_dta(paste0("Z:/Outcome Data/",UploadDate,"/MAT_HDP.dta")) 
+
+# load MAT_PRETERM(PPROM_OCCUR)
+MAT_PRETERM <- read_dta(paste0("Z:/Outcome Data/",UploadDate,"/MAT_PRETERM.dta")) 
+
 #maternal data
 df_maternal <- MAT_ENROLL %>%
   mutate(remapp = case_when(
     (SITE == "Ghana" & M02_SCRN_OBSSTDAT >= "2022-12-28") |
-      (SITE == "Kenya" & M02_SCRN_OBSSTDAT >= "2023-04-14") |
+      (SITE == "Kenya" & M02_SCRN_OBSSTDAT >= "2023-04-03") |
       (SITE == "Zambia" & M02_SCRN_OBSSTDAT >= "2022-12-15") |
       (SITE == "Pakistan" & M02_SCRN_OBSSTDAT >= "2022-09-22" & M02_SCRN_OBSSTDAT <= "2024-04-05") |
       (SITE == "India-CMC" & M02_SCRN_OBSSTDAT >= "2023-06-20") |
@@ -276,11 +273,15 @@ prep_hb2 <- df_maternal %>%
                  num_range("M08_TYPE_VISIT_",1:12),
                  num_range("M08_CBC_HB_LBORRES_",1:12),
                  num_range("M08_LBSTDAT_",1:12)
-  ) %>%
+  ) %>% 
+  mutate(across(where(is.integer), ~ as.integer(.))) %>%
   #replace 7s and 5s with NA hb can't be 0
-  replace_with_na_all(condition = ~.< 0) %>%
-  replace_with_na_all(condition = ~. %in% c("1907-07-07", "1905-05-05")) %>% 
-  distinct()
+  mutate(across(where(is.numeric), ~ ifelse(. < 0, NA, .))) %>%
+  mutate(across(where(is.character), ~ case_when(
+    . %in% c("1907-07-07", "1905-05-05") ~ NA_character_,
+    TRUE ~ .
+  ))) 
+
 
 #long hb data - basic hb data (no filter)
 df_hb_long2 <- prep_hb2 %>% 
@@ -306,12 +307,6 @@ df_hb_long2 <- prep_hb2 %>%
       ga_wks >= 28 & ga_wks <= 43 ~ 3,
       TRUE ~ NA_real_
     ), 
-    aim2_group = case_when(
-      !is.na(trimester) ~ trimester,
-      visit_type == 10 ~ 4, #pnc6
-      visit_type == 11 ~ 5, #pnc26
-      TRUE ~ NA_real_
-    ),
     hb_alti = case_when(
       #new adjustment
       SITE %in% c("Kenya", "Zambia") ~ CBC_HB_LBORRES - 0.8,
@@ -468,6 +463,138 @@ df_hb_exm_anc_pnc0_6 <- df_hb_long2 %>%
   distinct() %>% 
   mutate(hb = round(hb_exm, 1))
 
+#************calculate median of the hb value for trimester 1***********************************
+med_hb_trim1 <- df_hb_long2 %>% 
+  filter(trimester == 1) %>% 
+  group_by(MOMID, PREGID, SITE) %>%
+  mutate(
+    hb_mom_med = median(hb, na.rm = TRUE),
+  ) %>%
+  ungroup() %>%
+  select(MOMID, PREGID, SITE, hb_mom_med) %>% 
+  distinct() %>% 
+  mutate(hb_med = median(hb_mom_med, na.rm = TRUE)) %>% 
+  select(hb_med) %>% 
+  distinct() %>% 
+  as.numeric()
+
+#********************df_hb_exm_trim1 with one hb_exm value per mom********************
+df_hb_exm_trim1 <- df_hb_long2 %>%
+  filter(trimester == 1) %>% 
+  select(SITE, MOMID, PREGID, hb) %>% 
+  mutate(hb_dis = abs(hb - med_hb_trim1)) %>% 
+  group_by(MOMID, PREGID, hb_dis) %>% 
+  mutate(n = n()) %>% 
+  ungroup() %>% 
+  group_by(MOMID, PREGID) %>% 
+  #calculate one extreme hb value for each mom
+  mutate(
+    hb_exm = case_when(
+      #if the maximum distance is unique
+      n == 1 & hb_dis == max(hb_dis) ~ hb,
+      #if the maximum distance is not unique
+      n > 1 & hb_dis == max(hb_dis) ~ sample(hb[hb_dis == max(hb_dis)],1), 
+      TRUE ~ NA_real_
+    ),
+    hb_max = max(hb, na.rm = TRUE),
+    hb_min = min(hb, na.rm = TRUE)
+  ) %>% 
+  ungroup() %>% 
+  #remove the rows if the hb value is not extreme value
+  filter(!is.na(hb_exm)) %>%
+  select(SITE, MOMID, PREGID, hb_exm, hb_max, hb_min) %>% 
+  distinct() %>% 
+  mutate(hb = round(hb_exm, 1))
+
+#************calculate median of the hb value for trimester2***********************************
+med_hb_trim2 <- df_hb_long2 %>% 
+  filter(trimester == 2) %>% 
+  # filter(hb < 30 & hb > 3) %>% 
+  group_by(MOMID, PREGID, SITE) %>%
+  mutate(
+    hb_mom_med = median(hb, na.rm = TRUE),
+  ) %>%
+  ungroup() %>%
+  select(MOMID, PREGID, SITE, hb_mom_med) %>% 
+  distinct() %>% 
+  mutate(hb_med = median(hb_mom_med, na.rm = TRUE)) %>% 
+  select(hb_med) %>% 
+  distinct() %>% 
+  as.numeric()
+
+#********************df_hb_exm_trim2 with one hb_exm value per mom********************
+df_hb_exm_trim2 <- df_hb_long2 %>% 
+  #use ANC hb value only for current task
+  filter(trimester == 2) %>% 
+  select(SITE, MOMID, PREGID, hb) %>% 
+  mutate(hb_dis = abs(hb - med_hb_anc)) %>% 
+  group_by(MOMID, PREGID, hb_dis) %>% 
+  mutate(n = n()) %>% 
+  ungroup() %>% 
+  group_by(MOMID, PREGID) %>% 
+  #calculate one extreme hb value for each mom
+  mutate(
+    hb_exm = case_when(
+      #if the maximum distance is unique
+      n == 1 & hb_dis == max(hb_dis) ~ hb,
+      #if the maximum distance is not unique
+      n > 1 & hb_dis == max(hb_dis) ~ sample(hb[hb_dis == max(hb_dis)],1), 
+      TRUE ~ NA_real_
+    ),
+    hb_max = max(hb, na.rm = TRUE),
+    hb_min = min(hb, na.rm = TRUE)
+  ) %>% 
+  ungroup() %>% 
+  #remove the rows if the hb value is not extreme value
+  filter(!is.na(hb_exm)) %>%
+  select(SITE, MOMID, PREGID, hb_exm, hb_max, hb_min) %>% 
+  distinct() %>% 
+  mutate(hb = round(hb_exm, 1))
+
+#************calculate median of the hb value for trimester 3***********************************
+med_hb_trim3 <- df_hb_long2 %>% 
+  filter(trimester == 3) %>% 
+  group_by(MOMID, PREGID, SITE) %>%
+  mutate(
+    hb_mom_med = median(hb, na.rm = TRUE),
+  ) %>%
+  ungroup() %>%
+  select(MOMID, PREGID, SITE, hb_mom_med) %>% 
+  distinct() %>% 
+  mutate(hb_med = median(hb_mom_med, na.rm = TRUE)) %>% 
+  select(hb_med) %>% 
+  distinct() %>% 
+  as.numeric()
+
+#********************df_hb_exm_trim3 with one hb_exm value per mom********************
+df_hb_exm_trim3 <- df_hb_long2 %>% 
+  #use ANC hb value only for current task
+  filter(trimester == 3) %>% 
+  select(SITE, MOMID, PREGID, hb) %>% 
+  mutate(hb_dis = abs(hb - med_hb_anc)) %>% 
+  group_by(MOMID, PREGID, hb_dis) %>% 
+  mutate(n = n()) %>% 
+  ungroup() %>% 
+  group_by(MOMID, PREGID) %>% 
+  #calculate one extreme hb value for each mom
+  mutate(
+    hb_exm = case_when(
+      #if the maximum distance is unique
+      n == 1 & hb_dis == max(hb_dis) ~ hb,
+      #if the maximum distance is not unique
+      n > 1 & hb_dis == max(hb_dis) ~ sample(hb[hb_dis == max(hb_dis)],1), 
+      TRUE ~ NA_real_
+    ),
+    hb_max = max(hb, na.rm = TRUE),
+    hb_min = min(hb, na.rm = TRUE)
+  ) %>% 
+  ungroup() %>% 
+  #remove the rows if the hb value is not extreme value
+  filter(!is.na(hb_exm)) %>%
+  select(SITE, MOMID, PREGID, hb_exm, hb_max, hb_min) %>% 
+  distinct() %>% 
+  mutate(hb = round(hb_exm, 1))
+
 #*****************************************************************************
 #*3. Maternal outcome data
 #*****************************************************************************
@@ -483,9 +610,11 @@ prep_dpr_ftg <- df_hb_wide2 %>%
          starts_with("ga_wks"),
          starts_with("pst_wks")
   ) %>%
-  replace_with_na_all(condition = ~.< 0) %>%
-  replace_with_na_all(condition = ~.x %in% c("n/a")) %>%
-  replace_with_na_all(condition = ~. %in% c("1907-07-07", "1905-05-05"))
+  mutate(across(where(is.character), ~ na_if(., "n/a"))) %>%
+  mutate(across(where(is.numeric), 
+                ~ ifelse(. < 0, NA, .))) %>%
+  mutate(across(where(is.character), 
+                ~ ifelse(. %in% c("1907-07-07", "1905-05-05"), NA, .)))
 
 #******Depress and fatigue data*************************************************
 #maternal outcome data using one hb value at ANC20 (using part of enrollment data)
@@ -605,38 +734,109 @@ df_mat_pph <- df_hb_exm_anc %>%
   left_join(MAT_HEMORRHAGE %>% select(SITE, MOMID, PREGID, HEM_PPH)) %>% 
   filter(HEM_PPH %in% c(0, 1))
 
+df_mat_pph_trim1 <- df_hb_exm_trim1 %>% 
+  left_join(MAT_HEMORRHAGE %>% select(SITE, MOMID, PREGID, HEM_PPH)) %>% 
+  filter(HEM_PPH %in% c(0, 1))
+
+df_mat_pph_trim2 <- df_hb_exm_trim2 %>% 
+  left_join(MAT_HEMORRHAGE %>% select(SITE, MOMID, PREGID, HEM_PPH)) %>% 
+  filter(HEM_PPH %in% c(0, 1))
+
+df_mat_pph_trim3 <- df_hb_exm_trim3 %>% 
+  left_join(MAT_HEMORRHAGE %>% select(SITE, MOMID, PREGID, HEM_PPH)) %>% 
+  filter(HEM_PPH %in% c(0, 1))
+
 #******Maternal postpartum anemia at PNC6***************************************
-df_mat_ppa_pnc6 <- df_hb_exm_anc_pnc0_4 %>% 
-  left_join(MAT_ANEMIA) %>% 
+df_mat_anemia <- MAT_ANEMIA %>% 
   mutate(
     ppa_pnc6 = case_when(
       ANEMIA_PNC6 %in% c(1:3) ~ 1,
       ANEMIA_PNC6 == 0 ~ 0,
       TRUE ~ NA_real_
-    )) %>% 
-  filter(ppa_pnc6 >= 0)
-
-#******Maternal postpartum anemia at PNC26***************************************
-df_mat_ppa_pnc26 <- df_hb_exm_anc_pnc0_6 %>% 
-  left_join(MAT_ANEMIA) %>% 
-  mutate(
+    ),
     ppa_pnc26 = case_when(
       ANEMIA_PNC26 %in% c(1:3) ~ 1,
       ANEMIA_PNC26 == 0 ~ 0,
       TRUE ~ NA_real_
-    )) %>% 
-  filter(ppa_pnc26 >= 0)
+    )) 
+
+df_mat_ppa_pnc6 <- df_hb_exm_anc_pnc0_4 %>% 
+  left_join(df_mat_anemia) %>% 
+  filter(ppa_pnc6 %in% c(0, 1))
+
+df_mat_ppa_pnc6_trim1 <- df_hb_exm_trim1 %>% 
+  left_join(df_mat_anemia) %>% 
+  filter(ppa_pnc6 %in% c(0, 1))
+
+df_mat_ppa_pnc6_trim2 <- df_hb_exm_trim2 %>% 
+  left_join(df_mat_anemia) %>% 
+  filter(ppa_pnc6 %in% c(0, 1))
+
+df_mat_ppa_pnc6_trim3 <- df_hb_exm_trim3 %>% 
+  left_join(df_mat_anemia) %>% 
+  filter(ppa_pnc6 %in% c(0, 1))
+
+#******Maternal postpartum anemia at PNC26***************************************
+df_mat_ppa_pnc26 <- df_hb_exm_anc_pnc0_6 %>% 
+  left_join(df_mat_anemia) %>% 
+  filter(ppa_pnc26 %in% c(0, 1))
+
+df_mat_ppa_pnc26_trim1 <- df_hb_exm_trim1 %>% 
+  left_join(df_mat_anemia) %>% 
+  filter(ppa_pnc26 %in% c(0, 1))
+
+df_mat_ppa_pnc26_trim2 <- df_hb_exm_trim2 %>% 
+  left_join(df_mat_anemia) %>% 
+  filter(ppa_pnc26 %in% c(0, 1))
+
+df_mat_ppa_pnc26_trim3 <- df_hb_exm_trim3 %>% 
+  left_join(df_mat_anemia) %>% 
+  filter(ppa_pnc26 %in% c(0, 1))
+
+#******Preterm premature rupture of membranes***************************************
+df_mat_pprom <- df_hb_exm_anc %>%
+  left_join(MAT_PRETERM %>% select(SITE, MOMID, PREGID, PPROM_OCCUR)) %>%
+  mutate(
+    pprom = case_when(
+      PPROM_OCCUR %in% c(1,0) ~ PPROM_OCCUR,
+      TRUE ~ NA_real_
+    )) %>%
+  filter(pprom >= 0) 
+
+df_mat_pprom_trim1 <- df_hb_exm_trim1 %>% 
+  left_join(df_mat_pprom) %>% 
+  filter(pprom %in% c(0, 1))
+
+df_mat_pprom_trim2 <- df_hb_exm_trim2 %>% 
+  left_join(df_mat_pprom) %>% 
+  filter(pprom %in% c(0, 1))
+
+df_mat_pprom_trim3 <- df_hb_exm_trim3 %>% 
+  left_join(df_mat_pprom) %>% 
+  filter(pprom %in% c(0, 1))
 
 #*****************************************************************************
 #*4. Infant outcome data 
 #*****************************************************************************
 df_infant <- INF_OUTCOMES %>% 
+  filter(!is.na(INFANTID)) %>% 
+  select(SITE, MOMID, PREGID, INFANTID,
+         LBW2500_PRISMA, LBW1500_PRISMA, 
+         PRETERMBIRTH_LT37, PRETERMBIRTH_LT34, 
+         SGA_CENTILE, 
+         INF_ASPH,
+         INF_PSBI_IPC, INF_PSBI_PNC0, INF_PSBI_PNC1, INF_PSBI_PNC4, INF_PSBI_DENOM, 
+         STILLBIRTH_20WK,  STILLBIRTH_22WK, STILLBIRTH_24WK, STILLBIRTH_28WK,
+         INF_HYPERBILI_TCB15_24HR, INF_HYPERBILI_TCB15_5DAY, INF_HYPERBILI_TCB15_14DAY,
+         INF_HYPERBILI_AAP_24HR, INF_HYPERBILI_AAP_5DAY, INF_HYPERBILI_AAP_14DAY
+         ) %>% 
   group_by(SITE, MOMID, PREGID) %>% 
   mutate(n = n()) %>% 
   filter(n == 1) %>% 
   ungroup() %>% 
   filter(MOMID %in% df_maternal$MOMID) %>% 
   left_join(df_hb_exm_anc) 
+
 
 #******compo data (preterm37, lbw2500, sga10)************************************
 prep_compo <- df_infant %>% 
@@ -659,14 +859,74 @@ prep_compo <- df_infant %>%
 df_inf_compo <- prep_compo %>% 
   filter(compo_pre_lbw_sga >= 0)
 
+df_inf_compo_trim1 <- df_inf_compo %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim1) %>% 
+  filter(hb > 0)
+
+df_inf_compo_trim2 <- df_inf_compo %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim2) %>% 
+  filter(hb > 0)
+
+df_inf_compo_trim3 <- df_inf_compo %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim3) %>% 
+  filter(hb > 0)
+
 df_inf_preterm37 <- prep_compo %>% 
   filter(preterm37 >= 0)
+
+df_inf_preterm37_trim1 <- df_inf_preterm37 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim1) %>% 
+  filter(hb > 0)
+
+df_inf_preterm37_trim2 <- df_inf_preterm37 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim2) %>% 
+  filter(hb > 0)
+
+df_inf_preterm37_trim3 <- df_inf_preterm37 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim3) %>% 
+  filter(hb > 0)
 
 df_inf_lbw2500 <- prep_compo %>% 
   filter(lbw2500 >= 0)
 
+df_inf_lbw2500_trim1 <- df_inf_lbw2500 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim1) %>% 
+  filter(hb > 0)
+
+df_inf_lbw2500_trim2 <- df_inf_lbw2500 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim2) %>% 
+  filter(hb > 0)
+
+df_inf_lbw2500_trim3 <- df_inf_lbw2500 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim3) %>% 
+  filter(hb > 0)
+
 df_inf_sga10 <- prep_compo %>% 
   filter(sga10 >= 0)
+
+df_inf_sga10_trim1 <- df_inf_sga10 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim1) %>% 
+  filter(hb > 0)
+
+df_inf_sga10_trim2 <- df_inf_sga10 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim2) %>% 
+  filter(hb > 0)
+
+df_inf_sga10_trim3 <- df_inf_sga10 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim3) %>% 
+  filter(hb > 0)
 
 
 #******preterm34********************
@@ -674,10 +934,40 @@ df_inf_preterm34 <- df_infant %>%
   mutate(preterm34 = ifelse(PRETERMBIRTH_LT34 %in% c(1,0), PRETERMBIRTH_LT34, NA)) %>% 
   filter(preterm34 >= 0 & hb > 0)
 
+df_inf_preterm34_trim1 <- df_inf_preterm34 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim1) %>% 
+  filter(hb > 0)
+
+df_inf_preterm34_trim2 <- df_inf_preterm34 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim2) %>% 
+  filter(hb > 0)
+
+df_inf_preterm34_trim3 <- df_inf_preterm34 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim3) %>% 
+  filter(hb > 0)
+
 #******lbw1500********************
 df_inf_lbw1500 <- df_infant %>% 
   mutate(lbw1500 = ifelse(LBW1500_PRISMA %in% c(1,0), LBW1500_PRISMA, NA)) %>% 
   filter(lbw1500 >= 0 & hb > 0)
+
+df_inf_lbw1500_trim1 <- df_inf_lbw1500 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim1) %>% 
+  filter(hb > 0)
+
+df_inf_lbw1500_trim2 <- df_inf_lbw1500 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim2) %>% 
+  filter(hb > 0)
+
+df_inf_lbw1500_trim3 <- df_inf_lbw1500 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim3) %>% 
+  filter(hb > 0)
 
 #******sga3********************
 df_inf_sga3 <- df_infant %>% 
@@ -690,7 +980,22 @@ df_inf_sga3 <- df_infant %>%
   ) %>% 
   filter(sga3 >= 0 & hb > 0)
 
-#******neonatal sepsis/psbi (defined at IPC and PNC0 visits)********************
+df_inf_sga3_trim1 <- df_inf_sga3 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim1) %>% 
+  filter(hb > 0)
+
+df_inf_sga3_trim2 <- df_inf_sga3 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim2) %>% 
+  filter(hb > 0)
+
+df_inf_sga3_trim3 <- df_inf_sga3 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim3) %>% 
+  filter(hb > 0)
+
+#******neonatal psbi (defined at IPC and PNC0 visits)********************
 df_inf_psbi <- df_infant %>% 
   mutate(
     inf_psbi = case_when(
@@ -701,11 +1006,84 @@ df_inf_psbi <- df_infant %>%
   ) %>% 
   filter(hb > 0 & inf_psbi >= 0 & INF_PSBI_DENOM == 1)
 
-#******neonatal sepsis/psbi (defined at IPC and PNC0 visits)********************
+df_inf_psbi_trim1 <- df_inf_psbi %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim1) %>% 
+  filter(hb > 0)
+
+df_inf_psbi_trim2 <- df_inf_psbi %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim2) %>% 
+  filter(hb > 0)
+
+df_inf_psbi_trim3 <- df_inf_psbi %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim3) %>% 
+  filter(hb > 0)
+
+#******neonatal asphyxia (defined at IPC and PNC0 visits)********************
 df_inf_asph <- df_infant %>% 
   mutate(inf_asph = ifelse(INF_ASPH %in% c(0,1), INF_ASPH, NA_real_)) %>% 
   filter(hb > 0 & inf_asph >= 0)
 
+df_inf_asph_trim1 <- df_inf_asph %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim1) %>% 
+  filter(hb > 0)
+
+df_inf_asph_trim2 <- df_inf_asph %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim2) %>% 
+  filter(hb > 0)
+
+df_inf_asph_trim3 <- df_inf_asph %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim3) %>% 
+  filter(hb > 0)
+
+#******stillbirth: death before delivery at GA >=20********************
+df_inf_stillbirth20 <- df_infant %>% 
+  mutate(inf_stillbirth20 = ifelse(STILLBIRTH_20WK %in% c(0,1), STILLBIRTH_20WK, NA_real_)) %>% 
+  filter(hb > 0 & inf_stillbirth20 >= 0)
+
+df_inf_stillbirth20_trim1 <- df_inf_stillbirth20 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim1) %>% 
+  filter(hb > 0)
+
+df_inf_stillbirth20_trim2 <- df_inf_stillbirth20 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim2) %>% 
+  filter(hb > 0)
+
+df_inf_stillbirth20_trim3 <- df_inf_stillbirth20 %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim3) %>% 
+  filter(hb > 0)
+
+#******Neonatal hyperbilirubinemia********************
+df_inf_hyperbili <- df_infant %>% 
+  mutate(hyperbili = case_when(
+    INF_HYPERBILI_AAP_24HR == 1 | INF_HYPERBILI_AAP_5DAY == 1 | INF_HYPERBILI_AAP_14DAY == 1 ~ 1,
+    INF_HYPERBILI_AAP_24HR == 0 | INF_HYPERBILI_AAP_5DAY == 0 | INF_HYPERBILI_AAP_14DAY == 0 ~ 0,
+    TRUE ~ NA_real_
+  )) %>% 
+  filter(hb > 0 & hyperbili >= 0)
+
+df_inf_hyperbili_trim1 <- df_inf_hyperbili %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim1) %>% 
+  filter(hb > 0)
+
+df_inf_hyperbili_trim2 <- df_inf_hyperbili %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim2) %>% 
+  filter(hb > 0)
+
+df_inf_hyperbili_trim3 <- df_inf_hyperbili %>% 
+  select(-starts_with("hb")) %>% 
+  left_join(df_hb_exm_trim3) %>% 
+  filter(hb > 0)
 #*****************************************************************************
 #*5. save data
 #*****************************************************************************
@@ -726,6 +1104,32 @@ save(df_mat_pph, file = "derived_data/df_mat_pph.rda")
 save(df_mat_ppa_pnc6, file = "derived_data/df_mat_ppa_pnc6.rda")
 save(df_mat_ppa_pnc26, file = "derived_data/df_mat_ppa_pnc26.rda")
 
+save(df_mat_pprom, file = "derived_data/df_mat_pprom.rda")
+
+#trim1
+save(df_mat_pph_trim1, file = "derived_data/df_mat_pph_trim1.rda")
+
+save(df_mat_ppa_pnc6_trim1, file = "derived_data/df_mat_ppa_pnc6_trim1.rda")
+save(df_mat_ppa_pnc26_trim1, file = "derived_data/df_mat_ppa_pnc26_trim1.rda")
+
+save(df_mat_pprom_trim1, file = "derived_data/df_mat_pprom_trim1.rda")
+
+#trim2
+save(df_mat_pph_trim2, file = "derived_data/df_mat_pph_trim2.rda")
+
+save(df_mat_ppa_pnc6_trim2, file = "derived_data/df_mat_ppa_pnc6_trim2.rda")
+save(df_mat_ppa_pnc26_trim2, file = "derived_data/df_mat_ppa_pnc26_trim2.rda")
+
+save(df_mat_pprom_trim2, file = "derived_data/df_mat_pprom_trim2.rda")
+
+#trim3
+save(df_mat_pph_trim3, file = "derived_data/df_mat_pph_trim3.rda")
+
+save(df_mat_ppa_pnc6_trim3, file = "derived_data/df_mat_ppa_pnc6_trim3.rda")
+save(df_mat_ppa_pnc26_trim3, file = "derived_data/df_mat_ppa_pnc26_trim3.rda")
+
+save(df_mat_pprom_trim3, file = "derived_data/df_mat_pprom_trim3.rda")
+
 #infant data
 save(df_infant, file = "derived_data/df_infant.rda")
 
@@ -742,6 +1146,64 @@ save(df_inf_sga3, file = "derived_data/df_inf_sga3.rda")
 save(df_inf_psbi, file = "derived_data/df_inf_psbi.rda")
 
 save(df_inf_asph, file = "derived_data/df_inf_asph.rda")
+
+save(df_inf_stillbirth20, file = "derived_data/df_inf_stillbirth20.rda")
+
+save(df_inf_hyperbili, file = "derived_data/df_inf_hyperbili.rda")
+
+#trim1
+save(df_inf_compo_trim1, file = "derived_data/df_inf_compo_trim1.rda")
+save(df_inf_preterm37_trim1, file = "derived_data/df_inf_preterm37_trim1.rda")
+save(df_inf_lbw2500_trim1, file = "derived_data/df_inf_lbw2500_trim1.rda")
+save(df_inf_sga10_trim1, file = "derived_data/df_inf_sga10_trim1.rda")
+
+save(df_inf_preterm34_trim1, file = "derived_data/df_inf_preterm34_trim1.rda")
+save(df_inf_lbw1500_trim1, file = "derived_data/df_inf_lbw1500_trim1.rda")
+save(df_inf_sga3_trim1, file = "derived_data/df_inf_sga3_trim1.rda")
+
+save(df_inf_psbi_trim1, file = "derived_data/df_inf_psbi_trim1.rda")
+
+save(df_inf_asph_trim1, file = "derived_data/df_inf_asph_trim1.rda")
+
+save(df_inf_stillbirth20_trim1, file = "derived_data/df_inf_stillbirth20_trim1.rda")
+
+save(df_inf_hyperbili_trim1, file = "derived_data/df_inf_hyperbili_trim1.rda")
+
+#trim2
+save(df_inf_compo_trim2, file = "derived_data/df_inf_compo_trim2.rda")
+save(df_inf_preterm37_trim2, file = "derived_data/df_inf_preterm37_trim2.rda")
+save(df_inf_lbw2500_trim2, file = "derived_data/df_inf_lbw2500_trim2.rda")
+save(df_inf_sga10_trim2, file = "derived_data/df_inf_sga10_trim2.rda")
+
+save(df_inf_preterm34_trim2, file = "derived_data/df_inf_preterm34_trim2.rda")
+save(df_inf_lbw1500_trim2, file = "derived_data/df_inf_lbw1500_trim2.rda")
+save(df_inf_sga3_trim2, file = "derived_data/df_inf_sga3_trim2.rda")
+
+save(df_inf_psbi_trim2, file = "derived_data/df_inf_psbi_trim2.rda")
+
+save(df_inf_asph_trim2, file = "derived_data/df_inf_asph_trim2.rda")
+
+save(df_inf_stillbirth20_trim2, file = "derived_data/df_inf_stillbirth20_trim2.rda")
+
+save(df_inf_hyperbili_trim2, file = "derived_data/df_inf_hyperbili_trim2.rda")
+
+#trim3
+save(df_inf_compo_trim3, file = "derived_data/df_inf_compo_trim3.rda")
+save(df_inf_preterm37_trim3, file = "derived_data/df_inf_preterm37_trim3.rda")
+save(df_inf_lbw2500_trim3, file = "derived_data/df_inf_lbw2500_trim3.rda")
+save(df_inf_sga10_trim3, file = "derived_data/df_inf_sga10_trim3.rda")
+
+save(df_inf_preterm34_trim3, file = "derived_data/df_inf_preterm34_trim3.rda")
+save(df_inf_lbw1500_trim3, file = "derived_data/df_inf_lbw1500_trim3.rda")
+save(df_inf_sga3_trim3, file = "derived_data/df_inf_sga3_trim3.rda")
+
+save(df_inf_psbi_trim3, file = "derived_data/df_inf_psbi_trim3.rda")
+
+save(df_inf_asph_trim3, file = "derived_data/df_inf_asph_trim3.rda")
+
+save(df_inf_stillbirth20_trim3, file = "derived_data/df_inf_stillbirth20_trim3.rda")
+
+save(df_inf_hyperbili_trim3, file = "derived_data/df_inf_hyperbili_trim3.rda")
 
 #*****************************************************************************
 #*6. heatmap data - added 2024-07-29
