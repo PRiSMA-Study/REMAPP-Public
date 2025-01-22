@@ -1,0 +1,594 @@
+---
+title: "<span style='font-size: 18px'> <span style='text-align: center'> Hemoglobin Report - REMAPP"
+date: "Issued: `r Sys.Date()`"
+output:
+  pdf_document:
+    toc: no
+    toc_depth: 4
+    number_sections: true
+    latex_engine: xelatex
+    keep_tex: true
+  toc-title: Table of Contents
+---
+
+**Date of included data upload to Synapse: ** 2024-06-28
+
+
+\tableofcontents
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(fig.width = 5, fig.height = 4, fig.align = "center")
+library(rmarkdown)
+library(knitr)
+library(tidyverse)
+library(wesanderson)
+library(officer)
+library(flextable)
+library(gt)
+library(VennDiagram)
+library(ggbreak)
+
+load("derived_data/df_hb_3type.rda")
+load("derived_data/df_hb_long.rda")
+load("derived_data/df_anemia_complet_preg.rda")
+load("derived_data/df_anemia_trim.rda")
+
+#table format
+tb_flextable <- function(data, caption, seq_id, bkm) { 
+  tb <- qflextable(data)
+  tb <- set_table_properties(
+    tb, width = 0.8, layout = "autofit",
+    opts_pdf = list(tabcolsep = 3)) 
+  tb <- set_caption(tb,
+    caption = as_paragraph(
+as_chunk(caption, props = fp_text_default(font.family = "Arial"))
+),
+    word_stylename = "Table Caption",
+    autonum = run_autonum(seq_id = seq_id, bkm = bkm)
+  )
+  tb <- bold(tb, bold = FALSE, part = "header")
+  tb
+}
+
+tb_theme2 <- function(matrix){
+  tb <- matrix %>% 
+    gt(
+      rownames_to_stub = TRUE
+    ) %>% 
+    opt_align_table_header(align = "left") %>% 
+    tab_spanner(
+      label = "Site",
+      columns = c(-Total)
+    ) %>% 
+    opt_stylize(style = 6, color = 'cyan') %>% 
+    tab_style(
+      style = list(
+        cell_fill(color = "#016795"),
+        cell_text(weight = "bold"),
+        cell_text(v_align = "middle"),
+        cell_text(color = "white")
+      ),
+      locations = list(
+        cells_title()
+      )
+    ) %>% 
+    tab_style(
+      style = list(
+        cell_fill(color = "#9edee0"),
+        cell_text(color = "black"),
+        cell_text(v_align = "middle") 
+      ),
+      locations = list(
+        cells_stubhead(),
+        cells_column_spanners(),
+        cells_column_labels() 
+      )
+    ) %>% 
+    tab_style(
+      style = list(
+        cell_fill(color = "#ebfcf9"),
+        cell_text(v_align = "middle") 
+      ),
+      locations = list(
+        cells_stub()
+      ) 
+    ) %>% 
+    tab_style(
+      style = list(
+        cell_text(align = "center") 
+      ),
+      locations = list(
+        cells_column_labels(columns = everything())
+      )
+    ) %>% 
+    tab_style(
+      style = list(
+        cell_text(align = "right") 
+      ),
+      locations = list(
+        cells_body(columns = everything())
+      ) 
+    ) %>%
+    fmt_markdown(columns = everything()) 
+} 
+
+#table format for other table
+tb_theme3 <- function(matrix){
+  tb <- matrix %>% 
+    gt(
+      rownames_to_stub = FALSE
+    ) %>% 
+    opt_align_table_header(align = "left") %>% 
+    opt_stylize(style = 6, color = 'cyan') %>% 
+    tab_style(
+      style = list(
+        cell_fill(color = "#016795"),
+        cell_text(weight = "bold"),
+        cell_text(v_align = "middle"),
+        cell_text(color = "white")
+      ),
+      locations = list(
+        cells_title()
+      )
+    ) %>% 
+    tab_style(
+      style = list(
+        cell_fill(color = "#9edee0"),
+        cell_text(weight = "bold"),
+        cell_text(color = "black"),
+        cell_text(v_align = "middle") 
+      ),
+      locations = list(
+        cells_stubhead(),
+        cells_column_spanners(),
+        cells_column_labels() 
+      )
+    ) %>% 
+    tab_style(
+      style = list(
+        cell_fill(color = "#f2fafa"),
+        cell_text(weight = "bold")
+      ),
+      locations = cells_body(
+        columns = 1
+      )
+    ) %>%
+    fmt_markdown(columns = everything()) %>%
+    sub_missing(
+     columns = everything(),
+     rows = everything(),
+     missing_text = ""
+    ) %>% 
+    tab_options(table.width = pct(60)) 
+} 
+```
+
+
+
+    
+\newpage
+
+# Hemoglobin by gestational age (CBC only)
+
+```{r scatter plot} 
+plot_cbc <- df_hb_long %>% 
+  select(MOMID, PREGID, SITE, ga_wks, hb, ga_wks) %>% 
+  filter(ga_wks > 0 & ga_wks < 42 & hb > 0 & hb < 30) 
+
+plot_cbc %>% 
+  ggplot(aes(x = ga_wks, y = hb)) +
+  geom_point(alpha = 0.25, color = "#016795", size = 0.1) +
+  scale_x_continuous(breaks=seq(floor(min(plot_cbc$ga_wks)),max(plot_cbc$ga_wks),1))+ 
+  xlab("Gestational Age (weeks)") +
+  ylab("Hemoglobin (g/dL)") + 
+  facet_grid(rows = vars(SITE)) +
+  theme_bw() +  
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust=1),
+        legend.position="bottom",
+        legend.title = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 7),
+        axis.title = element_text(size = 8), 
+        strip.text = element_text(size = 7.2)) + 
+  theme(strip.background=element_rect(fill="white"))+
+  scale_color_identity(name = "", breaks=c("#016795"),guide = 'legend',
+                       labels = c("Hemoglobin")) 
+
+```
+
+# Hemoglobin by gestational age (CBC, POC, SpHb)
+
+```{r}
+plot_hb_3type <- df_hb_3type %>% 
+  select(MOMID, PREGID, SITE, ga_wks, hb_type, hb_value, visit_type) %>% 
+  filter(ga_wks > 0 & ga_wks < 42 & hb_value > 0 & hb_value < 30) 
+
+plot_hb_3type %>% 
+  ggplot(aes(x = ga_wks, y = hb_value, group = hb_type, color = hb_type)) +
+  geom_point(alpha = 0.25, size = 0.1) +
+  facet_grid(rows = vars(SITE)) + 
+  theme_bw() +
+  theme(strip.background=element_rect(fill="white")) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust=1),
+        legend.position="bottom",
+        legend.title = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 7),
+        axis.title = element_text(size = 8),
+        strip.text = element_text(size = 7),
+        legend.text = element_text(size = 8)) + 
+scale_x_continuous(breaks=seq(floor(min(plot_hb_3type$ga_wks)),max(plot_hb_3type$ga_wks),1))+ 
+  xlab("Gestational Age (weeks)") +
+  ylab("HB Value (g/dL)") +
+  scale_color_manual(values= wes_palette("BottleRocket2", n = 3),
+                     guide=guide_legend(override.aes = list(alpha=0.8))) 
+
+```
+
+
+# Hemoglobin by trimester (CBC or POC)
+
+```{r, out.width='100%'}
+plot_hb_cbc_poc <- df_hb_long %>%   
+  mutate(
+    TRIMES = case_when(
+      trimester_86 == 1 ~ "Trimester 1",
+      trimester_86 == 2 ~ "Trimester 2",
+      trimester_86 == 3 ~ "Trimester 3",
+      TRUE ~ NA_character_,
+    )) %>%
+  filter(hb_cbc_poc > 0 & hb_cbc_poc <= 30 & !is.na(trimester))
+
+plot_hb_cbc_poc %>% 
+  ggplot(aes(x = hb_cbc_poc, fill = ..x..)) +
+  geom_histogram(color = "white", size =0,
+                 alpha= 1, position="identity", binwidth = 0.5) +
+  scale_x_continuous(breaks=seq(floor(min(plot_hb_cbc_poc$hb_cbc_poc)),max(plot_hb_cbc_poc$hb_cbc_poc),1))+
+  xlab("Hemoglobin (CBC/POC) (g/dL)") +
+  ylab("Frequency")+
+  facet_grid(SITE ~ TRIMES, scales="free_y") + 
+
+  theme_bw() +
+  theme(strip.background=element_rect(fill="white"),
+        strip.text = element_text(size = 7), 
+        panel.spacing = unit(0.3, "lines"), 
+        axis.text.x = element_text(angle = 90, vjust = 1, hjust=1),
+        legend.position="right", 
+        legend.title = element_text(size = 7),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 5), 
+        axis.title = element_text(size = 7.5),
+        legend.key.size = unit(0.2, "cm"),
+        legend.text = element_text(size = 6)) +
+   scale_fill_gradientn(colours = rev(wes_palette("FantasticFox1", 8, type = "continuous")),
+                        name = "HB value")
+
+```
+* Note that hemoglobin value shown in this plot are combination of CBC hb and POC hb value. POC hb value will be used only if CBC hb value is not available.
+* Trimester1: 0-13 weeks; Trimester2: 14-27 weeks; Trimester3: 28-40 weeks.
+
+# Anemia severity & HB level by GA 
+
+```{r anemia by ga}
+plot_hb_level <- df_hb_long %>%   
+  filter(!is.na(hb_level) & ga_wks_86 > 0 & ga_wks_86 < 42 & hb_cbc_poc > 0 & hb_cbc_poc < 30)
+
+plot_hb_level %>%
+  ggplot(aes(x = ga_wks_86, fill = hb_level)) +
+    geom_histogram(alpha = 0.9, position = position_fill(reverse = TRUE), color = "white",
+                   size = 0.1, binwidth = 1) +
+    scale_fill_manual(
+      values = c("#b31b1b", "#f18200", "#f8de7e",
+                 "#70B23F", "royalblue1", "purple4"),
+      drop = FALSE) + 
+    xlab("Gestational Age (weeks)") + 
+    ylab("Fraction") +
+  scale_x_continuous(breaks=seq(floor(min(plot_hb_level$ga_wks_86)),max(plot_hb_level$ga_wks_86),1))+ 
+    facet_grid(SITE ~., scales = "free_y", margins = TRUE) + 
+    theme_bw() +
+    theme(strip.background=element_rect(fill="white")) +
+    guides(fill=guide_legend(title="Anemia severity & HB level")) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust=1),
+        legend.position="bottom",
+        legend.title = element_text(color = "black", size = 7), 
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 6),
+        legend.text = element_text(size = 6.5),
+        axis.title = element_text(size = 7),
+        legend.key.size = unit(0.25,"cm"),
+        strip.text = element_text(size = 5.2),
+        legend.margin = margin(0, 0, 0, 0),  
+        legend.spacing.x = unit(0, "cm"),    
+        axis.title.x = element_text(margin = margin(t = 0)) 
+        )
+options(repr.plot.width = 12, repr.plot.height = 10)
+
+```
+Anemia severity & HB level is defined by using the combined hemoglobin value of CBC hb and POC hb. POC hb is used only if CBC hb is not available. 
+
+Hb thresholds during pregnancy:
+
+ * Severe: hb > 0 & hb < 7
+ * Moderate: hb >= 7 & hb < 10 (for GA at 14-27 weeks, hb >= 7 & hb < 9.5)
+ * Mild: hb >= 10 & hb < 11 (for GA at 14-27 weeks, hb >= 9.5 & hb < 10.5)
+ * Normal: hb >= 11 & hb <= 13 (for GA at 14-27 weeks, hb >= 10.5 & hb <= 13)
+ * High hb 13-<15 g/dl: hb > 13 & hb < 15
+ * High hb >=15 g/dl: hb >= 15
+
+# Anemia severity & HB level by trimester
+
+```{r}
+plot_hb_level <- df_hb_long %>%   
+    mutate(
+    TRIMES = case_when(
+      trimester_86 == 1 ~ "Trimester 1",
+      trimester_86 == 2 ~ "Trimester 2",
+      trimester_86 == 3 ~ "Trimester 3",
+      TRUE ~ NA_character_,
+    )) %>%
+  filter(!is.na(trimester_86) & !is.na(hb_level) & hb_cbc_poc > 0 & hb_cbc_poc < 30) #
+
+
+plot_hb_level %>%
+  ggplot(aes(x = trimester_86, fill = hb_level)) +
+    geom_bar(alpha = 0.9, position = position_fill(reverse = TRUE), color = "white",
+                   size = 0.1, binwidth = 1) +
+    scale_fill_manual(
+      values = c("#b31b1b", "#f18200", "#f8de7e",
+                 "#70B23F", "royalblue1", "purple4"),
+      drop = FALSE) + 
+    xlab("Trimester") + 
+    ylab("Fraction") +
+    facet_grid(cols = vars(SITE), scales = "free_y", margins = FALSE) + 
+    guides(fill=guide_legend(title="Anemia severity & HB level")) +
+    theme_bw() +
+    theme(legend.title = element_blank()) +
+    theme(strip.background=element_rect(fill="white")) +
+    theme(axis.text.x = element_text(angle = 0, vjust = 1, hjust=0.5, size = 7),
+        legend.position="bottom",
+        legend.title = element_text(color = "black", size = 8), 
+        panel.grid.minor = element_blank(),
+        strip.text = element_text(size = 8),
+        axis.text.y = element_text(size = 7),
+        legend.text = element_text(size = 7),
+        axis.title.x = element_text(size = 8),
+        legend.key.size = unit(0.4,"cm"),
+        )
+
+```
+
+# Table. Anemia by trimester pooled
+```{r, out.width='100%'}
+matrix_anemia_trim <- df_anemia_trim %>%
+group_by(SITE) %>% 
+  summarise(
+    "Participants with trimester 1 visit: N*" = sum(trimester == "Trimester 1"),
+    "Any anemia within trimester 1: n (%)" = 
+      paste0(sum(anemia == 1 & trimester == "Trimester 1", na.rm = TRUE), 
+             " (", format(sum(anemia == 1 & trimester == "Trimester 1", na.rm = TRUE)/sum(trimester == "Trimester 1", na.rm = TRUE)*100, digits = 2, nsmall = 2), ")"),
+    "Participants with trimester 2 visit: N*" = sum(trimester == "Trimester 2"),
+    "Any anemia within trimester 2: n (%)" = 
+      paste0(sum(anemia == 1 & trimester == "Trimester 2", na.rm = TRUE), 
+             " (", format(sum(anemia == 1 & trimester == "Trimester 2", na.rm = TRUE)/sum(trimester == "Trimester 2", na.rm = TRUE)*100, digits = 2, nsmall = 2), ")"),
+    "Participants with trimester 3 visit: N*" = sum(trimester == "Trimester 2"),
+    "Any anemia within trimester 3: n (%)" = 
+      paste0(sum(anemia == 1 & trimester == "Trimester 3", na.rm = TRUE), 
+             " (", format(sum(anemia == 1 & trimester == "Trimester 3", na.rm = TRUE)/sum(trimester == "Trimester 3", na.rm = TRUE)*100, digits = 2, nsmall = 2), ")"),
+  ) %>% 
+  t() %>% as.data.frame() %>% 
+  `colnames<-`(c(.[1,])) %>% 
+  slice(-1) %>% 
+  add_column(
+    .after = 6,
+    "Total" = df_anemia_trim %>% 
+  summarise(
+    "Participants with trimester 1 visit: N*" = sum(trimester == "Trimester 1"),
+    "Any anemia within trimester 1: n (%)" = 
+      paste0(sum(anemia == 1 & trimester == "Trimester 1", na.rm = TRUE), 
+             " (", format(sum(anemia == 1 & trimester == "Trimester 1", na.rm = TRUE)/sum(trimester == "Trimester 1", na.rm = TRUE)*100, digits = 2, nsmall = 2), ")"),
+    "Participants with trimester 2 visit: N*" = sum(trimester == "Trimester 2"),
+    "Any anemia within trimester 2: n (%)" = 
+      paste0(sum(anemia == 1 & trimester == "Trimester 2", na.rm = TRUE), 
+             " (", format(sum(anemia == 1 & trimester == "Trimester 2", na.rm = TRUE)/sum(trimester == "Trimester 2", na.rm = TRUE)*100, digits = 2, nsmall = 2), ")"),
+    "Participants with trimester 3 visit: N*" = sum(trimester == "Trimester 2"),
+    "Any anemia within trimester 3: n (%)" = 
+      paste0(sum(anemia == 1 & trimester == "Trimester 3", na.rm = TRUE), 
+             " (", format(sum(anemia == 1 & trimester == "Trimester 3", na.rm = TRUE)/sum(trimester == "Trimester 3", na.rm = TRUE)*100, digits = 2, nsmall = 2), ")"),
+  ) %>% 
+      t() %>% unlist()
+  ) %>% 
+  mutate_all(funs(str_replace(., "(NaN)", "-")))
+
+tb_anemia_trim <- tb_theme2(matrix_anemia_trim) %>%
+    tab_header(
+    title = md("**Table1. Participants with anemia within trimester**")
+  ) %>%
+  tab_footnote(
+    footnote = c("N* = Total participants with non-missing data within trimester. Note that if more than one hb value collected within same trimester, only the visit with worst anemia status will be kept.")
+  ) %>% gtsave("anemia_trim.png", expand = 10)
+
+knitr::include_graphics("anemia_trim.png")
+```
+
+# Figure. Anemia by trimester pooled
+```{r}
+#factor anemia
+plot_anemia_trim <- df_anemia_trim %>% 
+  mutate(trims = case_when(
+    trimester == "Trimester 1" ~ 1,
+    trimester == "Trimester 2" ~ 2,
+    trimester == "Trimester 3" ~ 3,
+  ))
+
+plot_anemia_trim$anemia <- factor(
+  plot_anemia_trim$anemia, 
+  levels = c(0,1),
+  labels = c("Not anemia", "Anemia")
+)
+
+plot_anemia_trim %>% ggplot(aes(x = trims, fill = anemia)) +
+    geom_bar(alpha = 0.9, position = "fill", color = "white", 
+                   size = 0.1, binwidth = 1) +
+    scale_fill_manual(
+      values = c( "#70B23F", "#b31b1b"),
+      drop = FALSE) +
+    xlab("Trimester") + 
+    ylab("Fraction") +
+    facet_grid(cols = vars(SITE), scales = "free_y", margins = TRUE) + 
+    guides(fill=guide_legend(title="Anemia")) +
+    theme_bw() +
+    theme(legend.title = element_blank()) +
+    theme(strip.background=element_rect(fill="white")) +
+    theme(axis.text.x = element_text(angle = 0, vjust = 1, hjust=0.5, size = 7),
+        legend.position="bottom",
+        legend.title = element_text(color = "black", size = 8), 
+        panel.grid.minor = element_blank(),
+        axis.text.y = element_text(size = 7),
+        legend.text = element_text(size = 7),
+        axis.title.x = element_text(size = 8),
+        strip.text = element_text(size = 7.5)
+        ) 
+
+```
+*  Note that if more than one hb value collected within same trimester, only the visit with worst anemia status will be kept.
+
+# Any anemia during pregnancy for moms who completed pregnancy
+```{r, out.width='60%'}
+#any anemia anc
+matrix_anemia_anc <- df_anemia_complet_preg %>% 
+  filter(!is.na(ANEMIA_ANC)) %>%
+  group_by(SITE) %>% 
+  summarise(
+    "Anemia n (%) N" = paste0(sum(ANEMIA_ANC %in% c(1:3), na.rm = TRUE),
+             " (", format(sum(ANEMIA_ANC %in% c(1:3), na.rm = TRUE)/sum(!is.na(ANEMIA_ANC))*100, digits = 2, nsmall = 2), ") ", n())
+  ) %>% 
+  ungroup() %>%
+  bind_rows(
+    df_anemia_complet_preg %>% 
+        filter(!is.na(ANEMIA_ANC)) %>%
+      summarize(
+        SITE = "All Sites", 
+        "Anemia n (%) N" = paste0(sum(ANEMIA_ANC %in% c(1:3), na.rm = TRUE),
+             " (", format(sum(ANEMIA_ANC %in% c(1:3), na.rm = TRUE)/sum(!is.na(ANEMIA_ANC))*100, digits = 2, nsmall = 2), ") ", n())
+      )
+  )
+
+tb_anemia_anc <- tb_theme3(matrix_anemia_anc) %>%
+    tab_header(
+    title = md("**Table2. Percentage of any anemia during pregnancy**")
+  ) %>%
+  tab_footnote(
+    footnote = c("Note: Any anemia during pregnancy is calculated from the subset of women who completed pregnancy.")
+  ) %>% gtsave("anemia_anc.png", expand = 10)
+
+knitr::include_graphics("anemia_anc.png")
+
+```
+
+# Anemia occurance 
+```{r, results='hide'}
+df_venn <- df_anemia_complet_preg %>% 
+  filter(ANEMIA_T1 %in% c(0:3) & ANEMIA_T2 %in% c(0:3) & ANEMIA_T3 %in% c(0:3)) 
+
+venn.diagram(
+  x = list(
+    df_venn %>% filter(ANEMIA_T1 %in% c(1:3)) %>% select(MOMID) %>% unlist(),
+    df_venn %>% filter(ANEMIA_T2 %in% c(1:3)) %>% select(MOMID) %>% unlist(),
+    df_venn %>% filter(ANEMIA_T3 %in% c(1:3)) %>% select(MOMID) %>% unlist()
+    ),
+  category.names = c("Trim1", "Trim2", "Trim3"),
+  filename = 'venn_anemia.png',
+  output = TRUE ,
+  #output features
+  imagetype="png" ,
+  print.mode=c("raw","percent"),
+  height = 2000, 
+  width = 2000, 
+  resolution = 800,
+  compression = "lzw",
+    lwd = 0,
+  col=c("#b676a0", "#73bca9", '#f18200'),
+  fill = c(alpha("#b676a0",0.8), alpha('#21908dff',0.8), alpha('#f18200',0.8)), 
+  #numbers
+  cex = 0.6,
+  fontfamily = "sans",
+  #set names
+  cat.cex = 0.8, 
+  cat.default.pos = "outer",
+  cat.fontfamily = "sans",
+  cat.col = c("#b676a0", '#21908dff', '#f18200'), 
+  rotation = 1,
+  disable.logging = TRUE
+)
+```
+
+```{r}
+knitr::include_graphics("venn_anemia.png")
+```
+* Venn diagram is including women who has hemoglobin value at all three trimesters and who has completed pregnancy. 
+
+# Any anemia at PNC-6 visit 
+```{r, out.width='60%'}
+#any anemia pnc6
+matrix_anemia_pnc6 <- df_anemia_complet_preg %>% 
+  filter(!is.na(ANEMIA_PNC6)) %>%
+  group_by(SITE) %>% 
+  summarise(
+    "Anemia n (%) N" = paste0(sum(ANEMIA_PNC6 %in% c(1:3), na.rm = TRUE),
+             " (", format(sum(ANEMIA_PNC6 %in% c(1:3), na.rm = TRUE)/n()*100, digits = 2, nsmall = 2), ") ", n())
+  ) %>% 
+  ungroup() %>%
+  bind_rows(
+    df_anemia_complet_preg %>% 
+        filter(!is.na(ANEMIA_PNC6)) %>%
+      summarize(
+        SITE = "All Sites", 
+        "Anemia n (%) N" = paste0(sum(ANEMIA_PNC6 %in% c(1:3), na.rm = TRUE),
+             " (", format(sum(ANEMIA_PNC6 %in% c(1:3), na.rm = TRUE)/n()*100, digits = 2, nsmall = 2), ") ", n())
+      )
+  )
+
+tb_anemia_pnc <- tb_theme3(matrix_anemia_pnc6) %>%
+    tab_header(
+    title = md("**Table3. Percentage of anemia at PNC-6 visit**")
+  ) %>%
+  tab_footnote(
+    footnote = c("Note: Anemia is calculated from the subset of women who had PNC-6 visit.")
+  ) %>% gtsave("anemia_pnc6.png", expand = 10)
+
+knitr::include_graphics("anemia_pnc6.png")
+```
+
+# Any anemia at PNC-26 visit 
+```{r anemia pnc26, out.width='60%'}
+#any anemia pnc26
+matrix_anemia_pnc26 <- df_anemia_complet_preg %>% 
+  filter(!is.na(ANEMIA_PNC26)) %>%
+  group_by(SITE) %>% 
+  summarise(
+    "Anemia n (%) N" = paste0(sum(ANEMIA_PNC26 %in% c(1:3), na.rm = TRUE),
+             " (", format(sum(ANEMIA_PNC26 %in% c(1:3), na.rm = TRUE)/n()*100, digits = 2, nsmall = 2), ") ", n())
+  ) %>% 
+  ungroup() %>%
+  bind_rows(
+    df_anemia_complet_preg %>% 
+        filter(!is.na(ANEMIA_PNC26)) %>%
+      summarize(
+        SITE = "All Sites", 
+        "Anemia n (%) N" = paste0(sum(ANEMIA_PNC26 %in% c(1:3), na.rm = TRUE),
+             " (", format(sum(ANEMIA_PNC26 %in% c(1:3), na.rm = TRUE)/n()*100, digits = 2, nsmall = 2), ") ", n())
+      )
+  )
+
+tb_anemia_pnc <- tb_theme3(matrix_anemia_pnc26) %>%
+    tab_header(
+    title = md("**Table4. Percentage of anemia at PNC-26 visit**")
+  ) %>%
+  tab_footnote(
+    footnote = c("Note: Anemia is calculated from the subset of women who had PNC-26 visit.")
+  ) %>% gtsave("anemia_pnc26.png", expand = 10)
+
+knitr::include_graphics("anemia_pnc26.png")
+```
+
