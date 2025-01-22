@@ -2,7 +2,7 @@
 
 ## Description
 
-Fractional polynomial regression on healthy cohort data.
+Fractional polynomial regression to model the non-linear relationship between gestational age (in weeks) and hemoglobin levels (in g/dL) during pregnancy, providing a flexible approach when the relationship is too complex for linear or polynomial models.
 
 #### :pushpin: Updated on 2025-01-22
 #### :pushpin: Originally drafted by: Xiaoyan Hu (xyh@gwu.edu)
