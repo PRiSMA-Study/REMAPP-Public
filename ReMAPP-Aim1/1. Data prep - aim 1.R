@@ -11,7 +11,7 @@ library(BRINDA)
 UploadDate = "2024-06-28"
 
 #****************************************************************************
-#0. Prepare original data
+#1. load and merge data
 #****************************************************************************
 #load MAT_ENROLL 
 MAT_ENROLL <- read.csv(paste0("Z:/Outcome Data/",UploadDate,"/MAT_ENROLL.csv"))
@@ -106,7 +106,7 @@ df_maternal <- MAT_ENROLL %>%
 save(df_maternal, file = "derived_data/df_maternal.rda")
 
 #****************************************************************************
-#1. define criteria
+#2. define criteria
 #****************************************************************************
 #derive criteria
 prep_criteria <- df_maternal %>%
@@ -263,9 +263,9 @@ prep_criteria <- df_maternal %>%
     CRIT_HEPATITISC = ifelse(M06_HCV_POC_LBORRES == 1, 0,
                              ifelse(M06_HCV_POC_LBORRES == 0, 1, 55))
   ) %>% 
-  # F. no iron deficiency (not iron deficient: serum ferritin > 15 mcg/L(Ug/L)) 
-  #convert unit from ug/dL to mcg/L
-  #replace negative value to NA in order to use BRINDA package
+# F. no iron deficiency (not iron deficient: serum ferritin > 15 mcg/L(Ug/L)) 
+#convert unit from ug/dL to mcg/L
+#replace negative value to NA in order to use BRINDA package
   mutate_at(vars(c(M08_FERRITIN_LBORRES, M08_CRP_LBORRES, M08_AGP_LBORRES)), ~ replace(., . < 0, NA)) %>% 
   mutate(
     FERRITIN_LBORRES = case_when(
@@ -277,23 +277,23 @@ prep_criteria <- df_maternal %>%
     crp = ifelse(M08_CRP_LBORRES == 0, 0.024, M08_CRP_LBORRES), 
     agp = ifelse(M08_AGP_LBORRES == 0, 0.0304, M08_AGP_LBORRES), 
     ferritin = ifelse(FERRITIN_LBORRES == 0, 0.6, FERRITIN_LBORRES))
-
+    
 #apply BRINDA package to adjust ferritin using CRP and AGP
 df_ferritin <- prep_criteria %>% 
   select(SITE, MOMID, PREGID, crp, agp, ferritin) 
 
 df_ferritin_gh <- BRINDA(dataset = df_ferritin %>% filter(SITE == "Ghana"),
-                         ferritin_varname = ferritin,
-                         crp_varname = crp, 
-                         agp_varname = agp,
-                         # Please write WRA, PSC, Other, or Manual.
-                         population = Other, 
-                         # leave crp_ref_value_manual empty, BRINDA R package will use an external crp reference value for WRA
-                         crp_ref_value_manual = , 
-                         # leave agp_ref_value_manual empty, BRINDA R package will use an external agp reference value for WRA
-                         agp_ref_value_manual = , 
-                         #output_format full or simple
-                         output_format = simple) %>% 
+                      ferritin_varname = ferritin,
+                      crp_varname = crp, 
+                      agp_varname = agp,
+                      # Please write WRA, PSC, Other, or Manual.
+                      population = Other, 
+                      # leave crp_ref_value_manual empty, BRINDA R package will use an external crp reference value for WRA
+                      crp_ref_value_manual = , 
+                      # leave agp_ref_value_manual empty, BRINDA R package will use an external agp reference value for WRA
+                      agp_ref_value_manual = , 
+                      #output_format full or simple
+                      output_format = simple) %>% 
   select(SITE, MOMID, PREGID, sf_adj)
 
 df_ferritin_ic <- BRINDA(dataset = df_ferritin %>% filter(SITE == "India-CMC"),
@@ -380,17 +380,11 @@ df_criteria <- prep_criteria %>%
       sf_adj > 0 & sf_adj <= 15 ~ 0,
       TRUE ~ 55
     ))
-
-#After enrollment, participants will be excluded from the final analysis if any of the following occur: 
-#Multiple pregnancies not identified at recruitment
-#Severe conditions not evident at recruitment including cancer, HIV, TB, or Malaria
-#Severe pregnancy-related conditions requiring hospital admission including eclampsia or severe pre-eclampsia
-
-
+    
 save(df_criteria, file = "derived_data/df_criteria.rda")
 
 #**************************************************************************************
-#*2. check eligibility and save df_healthy.rda
+#*3. check eligibility and save healthy cohort data
 #**************************************************************************************
 #code 666 for any not applicable by site
 healthyOutcome <- df_criteria %>% 
@@ -404,7 +398,7 @@ healthyOutcome <- df_criteria %>%
   #   HEALTHY_CHECK < 20 ~ 3 #20 criteria
   # ) ) %>%
   mutate(
-    #!!! temp code for healthy_eligible
+    #!!! temp code for healthy_eligible to allow exclude some criteria
     HEALTHY_ELIGIBLE = case_when(
       CRIT_AGE == 1 &
         # CRIT_GA == 1 & #no pending value
@@ -414,7 +408,7 @@ healthyOutcome <- df_criteria %>%
         CRIT_LBW == 1 &
         CRIT_STILLBIRTH == 1 &
         CRIT_UNPL_CESARIAN == 1 &
-        CRIT_SMOKE == 1 & #zambia betal nuts all 77
+        CRIT_SMOKE == 1 & 
         CRIT_DRINK %in% c(1,666) &
         CRIT_CHRONIC == 1 &
         CRIT_HIV == 1 &
@@ -423,13 +417,13 @@ healthyOutcome <- df_criteria %>%
         CRIT_HEPATITISB == 1 & 
         CRIT_HEPATITISC == 1 &
         (CRIT_IRON == 1 | CRIT_IRON == 55) &
-        # CRIT_IRON == 1 & #!!! all site
+        # CRIT_IRON == 1 & #update to this part once data collection completes (no 55 allowed)
         (CRIT_INFLAM == 1 | CRIT_INFLAM == 55) & 
-        # CRIT_INFLAM == 1 & #!!!pak, india
+        # CRIT_INFLAM == 1 & #update to this part once data collection completes (no 55 allowed)
         (CRIT_HEMOGLOBINOPATHIES == 1 | CRIT_HEMOGLOBINOPATHIES == 55) &  
-        # CRIT_HEMOGLOBINOPATHIES == 1 &  
+        # CRIT_HEMOGLOBINOPATHIES == 1 & #update to this part once data collection completes (no 55 allowed)
         (CRIT_G6PD == 1 | CRIT_G6PD == 55) 
-      # CRIT_G6PD == 1
+      # CRIT_G6PD == 1 #update to this part once data collection completes (no 55 allowed)
       ~ 1, 
       TRUE ~ 0
     ) ) %>%
@@ -442,7 +436,7 @@ table(df_healthy$SITE)
 save(healthyOutcome, file = "derived_data/healthyOutcome.rda")
 save(df_healthy, file = "derived_data/df_healthy.rda")
 #*****************************************************************************
-#*3. HB data --> long and wide
+#*4. HB data --> long and wide
 #*****************************************************************************
 #*prepare data
 prep_hb1 <- read.csv(paste0("Z:/Stacked Data/",UploadDate,"/mnh08_merged.csv")) %>% 
@@ -461,7 +455,6 @@ df_hb_long1_all <- prep_hb1 %>%
   left_join(df_healthy %>% select(SITE, MOMID, PREGID, EST_CONCEP_DATE, M03_SMOKE_OECOCCUR)) %>% 
   #derive variables
   mutate(
-    # diff_visit = ymd(M08_LBSTDAT) - ymd(M06_DIAG_VSDAT),
     ga_wks = case_when(
       M08_TYPE_VISIT >= 6 ~ NA_real_,
       M08_TYPE_VISIT < 6 ~ as.numeric(ymd(M08_LBSTDAT) - ymd(EST_CONCEP_DATE))/7
@@ -485,9 +478,6 @@ df_hb_long1_all <- prep_hb1 %>%
       M03_SMOKE_OECOCCUR == 0 ~ hb_alti,
       TRUE ~ NA_real_
     )) %>% 
-  #Remove rows that have gestational weeks less than 10 or greater than 50 (42-week pregnancy + 8-week postpartum).
-  #Remove rows that have hemoglobin less than 5 or greater than 18.
-  #Remove rows that have missing values on gestational weeks.
   filter(!is.na(EST_CONCEP_DATE) & !is.na(M08_LBSTDAT) & !is.na(M08_CBC_HB_LBORRES)) 
 
 #wide hb data for all healthy cohort with ga_wks info and hb values
@@ -520,7 +510,7 @@ save(df_hb_long1, file = "derived_data/df_hb_long1.rda")
 save(df_hb_wide1, file = "derived_data/df_hb_wide1.rda")
 
 #*****************************************************************************
-#*4. sensitivity analysis data
+#*5. sensitivity analysis data
 #*****************************************************************************
 #*prepare data
 df_sensitive_long <- df_hb_long1 %>% 
@@ -529,10 +519,8 @@ df_sensitive_long <- df_hb_long1 %>%
 #save data
 save(df_sensitive_long, file = "derived_data/df_sensitive_long.rda")
 
-
-
 #*****************************************************************************
-#*5. data for eligiblity and missingness
+#*6. data for eligibility and missingness
 #*****************************************************************************
 #*Define c1 to c20
 df_eli <- df_criteria %>%
