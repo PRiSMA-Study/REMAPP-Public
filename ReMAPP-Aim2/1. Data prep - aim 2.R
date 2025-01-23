@@ -270,9 +270,9 @@ prep_hb2 <- df_maternal %>%
   dplyr:: select("SCRNID", "MOMID", "PREGID", "SITE",
                  EST_CONCEP_DATE, PREG_END_DATE,
                  M03_SMOKE_OECOCCUR,
-                 num_range("M08_TYPE_VISIT_",1:12),
-                 num_range("M08_CBC_HB_LBORRES_",1:12),
-                 num_range("M08_LBSTDAT_",1:12)
+                 num_range("M08_TYPE_VISIT_",1:12), #update to include all visits
+                 num_range("M08_CBC_HB_LBORRES_",1:12), #update to include all visits
+                 num_range("M08_LBSTDAT_",1:12) #update to include all visits
   ) %>% 
   mutate(across(where(is.integer), ~ as.integer(.))) %>%
   #replace 7s and 5s with NA hb can't be 0

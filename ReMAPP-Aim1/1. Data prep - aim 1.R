@@ -62,7 +62,7 @@ mnh06 <- read.csv(paste0("Z:/Stacked Data/",UploadDate,"/mnh06_merged.csv")) %>%
          M06_MALARIA_POC_LBORRES, M06_MALARIA_POC_LBPERF, 
          M06_HBV_POC_LBORRES, M06_HBV_POC_LBPERF, M06_HCV_POC_LBORRES, M06_HCV_POC_LBPERF,
          M06_HIV_POC_LBORRES, M06_HIV_POC_LBPERF,
-         num_range("M06_HB_POC_LBORRES_",1:12))
+         num_range("M06_HB_POC_LBORRES_",1:12)) #update to include all visits
 
 #load mnh08 and keep necessary variables
 mnh08 <- read.csv(paste0("Z:/Stacked Data/",UploadDate,"/mnh08_merged.csv")) %>% 
@@ -446,7 +446,7 @@ prep_hb1 <- read.csv(paste0("Z:/Stacked Data/",UploadDate,"/mnh08_merged.csv")) 
   #remove duplicates if there is any
   group_by(SITE, MOMID, PREGID, M08_TYPE_VISIT) %>% 
   mutate(n = n()) %>% 
-  filter(n == 1, M08_TYPE_VISIT %in% c(1:12)) %>% 
+  filter(n == 1, M08_TYPE_VISIT %in% c(1:12)) %>% #update to include all visits
   replace_with_na_all(condition = ~.< 0) %>%
   replace_with_na_all(condition = ~. %in% c("1907-07-07", "1907-05-05")) 
 

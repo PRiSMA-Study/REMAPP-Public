@@ -95,11 +95,11 @@ prep_hb <- df_maternal %>%
   dplyr:: select("SCRNID", "MOMID", "PREGID", "SITE",
                  EST_CONCEP_DATE,
                  M03_SMOKE_OECOCCUR,
-                 num_range("M06_HB_POC_LBORRES_", 1:12),
-                 num_range("M06_SPHB_LBORRES_", 1:12),
-                 num_range("M06_DIAG_VSDAT_",1:12),
-                 num_range("M08_CBC_HB_LBORRES_",1:12),
-                 num_range("M08_LBSTDAT_",1:12),
+                 num_range("M06_HB_POC_LBORRES_", 1:12), #update to include all datasets
+                 num_range("M06_SPHB_LBORRES_", 1:12), #update to include all datasets
+                 num_range("M06_DIAG_VSDAT_",1:12), #update to include all datasets
+                 num_range("M08_CBC_HB_LBORRES_",1:12), #update to include all datasets
+                 num_range("M08_LBSTDAT_",1:12), #update to include all datasets
                  M09_MAT_LD_OHOSTDAT, 
                  ANEMIA_T1, ANEMIA_T2, ANEMIA_T3, 
                  ANEMIA_ANC, ANEMIA_PNC6, ANEMIA_PNC26
