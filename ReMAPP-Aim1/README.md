@@ -9,7 +9,6 @@ This analytic pipeline supports ReMAPP Aim 1, which constructs a Healthy Pregnan
 #### :pushpin: Originally drafted by: Xiaoyan Hu (xyh@gwu.edu)
 #### :pushpin: Modified and extended by: Precious Williams (williams_pj@gwu.edu)
 
-## Directory Structure & Pipeline Flow
 ## Script Order
 
 ### 1. `1_remapp_one_prep.R` — Data Preparation & Cohort Construction
