@@ -4,7 +4,7 @@
 
 This analytic pipeline supports ReMAPP Aim 1, which constructs a Healthy Pregnancy Cohort and models the non-linear relationship between gestational age (GA, weeks) and maternal hemoglobin (Hb, g/dL) during pregnancy. The primary analytic method is fractional polynomial regression (FPR), selected to flexibly capture complex, non-linear Hb–GA relationships that are not well represented by linear or standard polynomial models.
 
-## Versioning
+## Version control
 #### :pushpin: Updated on 2026-01-14
 #### :pushpin: Originally drafted by: Xiaoyan Hu (xyh@gwu.edu)
 #### :pushpin: Modified and extended by: Precious Williams (williams_pj@gwu.edu)
