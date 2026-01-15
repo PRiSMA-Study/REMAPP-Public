@@ -78,7 +78,7 @@ These datasets harmonize maternal, laboratory, and screening data prior to eligi
 * **`df_criteria.rda`** – Maternal dataset containing all derived healthy cohort eligibility criteria (`CRIT_*`)
   
 ### Healthy Cohort Eligibility Outputs
-Eligibility is defined using **20 prespecified criteria** spanning clinical, anthropometric, laboratory, and behavioral domains.
+Eligibility is defined using **20 prespecified criteria** (18 in use for analysis purposes, GA and G6PD criteria excluded) spanning clinical, anthropometric, laboratory, and behavioral domains.
 * **`healthyOutcome.rda`** – Master eligibility dataset containing:
   * `HEALTHY_ELIGIBLE` – Primary healthy cohort definition
   * `HEALTHY_ELIGIBLE_GA` – Definition including gestational age as an eligibility criterion
