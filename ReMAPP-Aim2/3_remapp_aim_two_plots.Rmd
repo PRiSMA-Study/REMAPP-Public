@@ -1,0 +1,4461 @@
+---
+title: "<span style='font-size: 18px'> <span style='text-align: center'> REMAPP Aim 2 Isotonic Regression and Spline Plots"
+date: "Issued: `r Sys.Date()`"
+output:
+  pdf_document:
+    toc: no
+    toc_depth: 4
+    number_sections: true
+    latex_engine: xelatex
+    keep_tex: true
+  toc-title: Table of Contents
+---
+
+**Date of included data upload to Synapse:** 2025-10-31
+
+\tableofcontents
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(fig.align = "center")
+
+rm(list = ls())
+# Core reporting and table packages
+library(rmarkdown)
+library(knitr)
+library(officer)
+library(flextable)
+library(gt)
+library(dplyr)
+# Data wrangling and visualization
+library(tidyverse)
+library(ggrepel)
+library(wesanderson)
+library(ggbreak)
+library(VennDiagram)
+
+# Statistical modeling
+library(rms)
+
+# Data import/export
+library(haven)
+library(webshot2)
+
+UploadDate = "2025-10-31"
+
+maindir <- file.path("D:/Users/williams_pj/Documents/Analysis/ReMAPP/Aim2", UploadDate)
+
+setwd(file.path("D:/Users/williams_pj/Documents/Analysis/ReMAPP/Aim2", UploadDate))
+
+  
+load("derived_data/df_hb_long.rda")
+load("derived_data/df_anemia_complet_preg.rda")
+load("derived_data/df_anemia_trim.rda")
+load("derived_data/df_maternal.rda")
+load("derived_data/df_hb_long2.rda")
+load("derived_data/df_heat_inf.rda")
+load("derived_data/df_heat_mat.rda")
+load("derived_data/anc_anemia_long.rda")
+
+# load("derived_data/df_mat_anc_fat.rda")
+# load("derived_data/df_mat_pnc_fat.rda")
+# load("derived_data/df_mat_anc_dpr.rda")
+# load("derived_data/df_mat_pnc_dpr.rda")
+
+
+load("derived_data/df_hb_exm_anc.rda")
+load("derived_data/df_hb_exm_trim1.rda")
+load("derived_data/df_hb_exm_trim2.rda")
+load("derived_data/df_hb_exm_trim3.rda")
+
+
+source("~/REMAPP-Public/ReMAPP-Aim2/iso_code/plot_boot.R")
+
+#load all iso output datasets
+files <- list.files("iso_results", pattern = "^out_.*\\.rda$", full.names = TRUE)
+for (file in files) {
+  load(file)
+}
+
+datasets <- list.files("derived_data", pattern = "^df_(inf_|mat_).*\\.rda$", full.names = TRUE)
+for (data in datasets) {
+  load(data)
+}
+
+# List all .rds files in the iso_results directory
+rds_files <- list.files("iso_results", pattern = "\\.rds$", full.names = TRUE)
+
+# Read all the RDS files into a list
+models <- lapply(rds_files, readRDS)
+names(models) <- gsub("\\.rds$", "", basename(rds_files))
+
+
+#table format
+tb_flextable <- function(data, caption, seq_id, bkm) { 
+  tb <- qflextable(data)
+  tb <- set_table_properties(
+    tb, width = 0.8, layout = "autofit",
+    opts_pdf = list(tabcolsep = 3)) 
+  tb <- set_caption(tb,
+    caption = as_paragraph(
+as_chunk(caption, props = fp_text_default(font.family = "Arial"))
+),
+    word_stylename = "Table Caption",
+    autonum = run_autonum(seq_id = seq_id, bkm = bkm)
+  )
+  tb <- bold(tb, bold = FALSE, part = "header")
+  tb
+}
+
+tb_theme4 <- function(matrix){
+  tb <- matrix %>% 
+    gt(
+      #show row names
+      rownames_to_stub = FALSE
+    ) %>% 
+    opt_align_table_header(align = "left") %>% 
+    #use one of the default theme and customize
+    opt_stylize(style = 6, color = 'cyan') %>% 
+    #title style
+    tab_style(
+      style = list(
+        cell_fill(color = "#016795"),
+        cell_text(weight = "bold"),
+        cell_text(v_align = "middle"),
+        cell_text(color = "white")
+      ),
+      locations = list(
+        cells_title()
+      )
+    ) %>% 
+    #stub head, spanner column, column label style
+    tab_style(
+      style = list(
+        cell_fill(color = "#9edee0"),
+        cell_text(weight = "bold"),
+        cell_text(color = "black"),
+        cell_text(v_align = "middle") 
+      ),
+      locations = list(
+        cells_stubhead(),
+        cells_column_spanners(),
+        cells_column_labels()
+      )
+    ) %>% 
+    tab_style(
+    style = list(
+      cell_text(weight = "bold")
+    ),
+    locations = cells_row_groups(groups = everything())) %>% 
+    #first column color
+    tab_style(
+      style = list(
+        cell_fill(color = "#f2fafa"),
+        cell_text(weight = "bold"), 
+        table.width = px(600)
+      ),
+      locations = cells_body(
+        columns = 1
+      )
+    ) %>%
+    fmt_markdown(columns = everything()) %>%
+    sub_missing(
+     columns = everything(),
+     rows = everything(),
+     missing_text = ""
+    ) 
+}  
+
+#loading outcome table
+load_and_rename <- function(file_path, new_name) {
+  obj_name <- load(file_path)
+  assign(new_name, get(obj_name), envir = .GlobalEnv)
+}
+
+#generating outcome table
+# generate_iso_table <- function(df, model_label = "", save_path = NULL) {
+#   
+#   valid_cols <- paste0("Thres", 1:9)
+#   
+#   # Always returns length-9 vector with NAs where missing
+#   Thresh_vals <- sapply(valid_cols, function(col) {
+#     if (col %in% colnames(df)) as.numeric(df[[col]]) else NA_real_
+#   })
+# 
+#   # Build raw vectors
+#   N_vals <- as.numeric(df[paste0("N", 1:9)])
+#   Risk_vals <- as.numeric(df[paste0("Risk.Mscore", 1:9)])
+# 
+#   # Check if any full vector is all missing
+#   all_missing <- all(is.na(N_vals)) | all(is.na(Risk_vals)) | all(is.na(Thresh_vals))
+#   
+#   
+#   if (all_missing) {
+#     # Return a one-cell message
+#     msg_table <- tibble(Message = paste0("No thresholds computed for ", model_label)) %>% 
+#   gt() %>%
+#   tab_header(
+#     title = paste("Isotonic Thresholds for", model_label)
+#   ) %>%
+#   cols_label(Message = "") %>%  # Remove column label
+#   cols_align(align = "left") %>%
+#   opt_align_table_header(align = "left") %>%
+#   opt_stylize(style = 6, color = 'cyan') %>%
+#   tab_options(
+#     table.font.size = px(12),
+#     table.width = pct(50)
+#   ) %>%
+#   tab_style(
+#     style = list(
+#       cell_fill(color = "#016795"),
+#       cell_text(weight = "bold"),
+#       cell_text(v_align = "middle"),
+#       cell_text(color = "white")
+#     ),
+#     locations = cells_title()
+#   ) %>%
+#   tab_style(
+#     style = list(
+#       cell_fill(color = "#9edee0"),
+#       cell_text(weight = "bold"),
+#       cell_text(color = "black"),
+#       cell_text(v_align = "middle")
+#     ),
+#     locations = list(
+#       cells_stubhead(),
+#       cells_column_labels(),
+#       cells_body(columns = Message)
+#     )
+#   )
+# 
+# 
+#     
+#     if (!is.null(save_path)) {
+#       gtsave(msg_table, filename = save_path)
+#     }
+#     
+#     return(msg_table)
+#   }
+# 
+#   # Otherwise build the table
+#   compo_table <- tibble(
+#     Group = 1:9,
+#     N = N_vals,
+#     Risk = round(Risk_vals, 2),
+#     Threshold = Thresh_vals
+#   ) %>%
+#   filter(!(is.na(N) | is.na(Risk) | is.na(Threshold)))
+#   
+#     gt_tbl <- compo_table %>%
+#     gt() %>%
+#     tab_header(title = paste("Isotonic Thresholds for", model_label)) %>%
+#     fmt_number(columns = Risk, decimals = 2) %>%
+#     cols_label(
+#       Group = "Group",
+#       N = "Sample Size",
+#       Risk = "Estimated Risk",
+#       Threshold = "Hb Threshold"
+#     ) %>%
+#     cols_align(align = "left") %>%
+#     opt_align_table_header(align = "left") %>%
+#     opt_stylize(style = 6, color = 'cyan') %>%
+#     tab_options(
+#       table.font.size = px(12),
+#       table.width = pct(50)
+#     ) %>%
+#     tab_style(
+#       style = list(
+#         cell_fill(color = "#016795"),
+#         cell_text(weight = "bold"),
+#         cell_text(v_align = "middle"),
+#         cell_text(color = "white")
+#       ),
+#       locations = cells_title()
+#     ) %>%
+#     tab_style(
+#       style = list(
+#         cell_fill(color = "#9edee0"),
+#         cell_text(weight = "bold"),
+#         cell_text(color = "black"),
+#         cell_text(v_align = "middle")
+#       ),
+#       locations = list(
+#         cells_stubhead(),
+#         cells_column_spanners(),
+#         cells_column_labels()
+#       )
+#     ) 
+#     
+#   if (!is.null(save_path)) {
+#     gtsave(gt_tbl, filename = save_path)
+#   }
+# 
+#   return(gt_tbl)
+# }
+generate_iso_table <- function(df, model_label = "", save_path = NULL) {
+
+  # df = out_compo_25
+  # model_label = "Infant Composite Outcome (.25 Model)"
+  # save_path = paste0(maindir, "/iso_results/compo_table_25.png")
+  
+  group_indices <- 1:10
+  
+  names(df) <- gsub("^Risk[./]Mscore", "Risk", names(df))   # Risk.Mscore1 → Risk1
+  names(df) <- gsub("^N[./]Group",     "N",     names(df))  # N.Group1 → N1 (if ever used)
+  names(df) <- gsub("^Thres[./]",     "Thres", names(df))   # Thres/1 → Thres1
+  
+  
+  # Use the renamed columns
+  N_vals <- sapply(paste0("N", group_indices),     
+            function(col) if (col %in% names(df)) as.numeric(df[[1, col]]) else NA_real_)
+  
+  Risk_vals  <- sapply(paste0("Risk", group_indices),  
+                function(col) if (col %in% names(df)) as.numeric(df[[1, col]]) else NA_real_)
+  
+  Thres_vals <- sapply(paste0("Thres", 1:9),           
+                function(col) if (col %in% names(df)) as.character(df[[1, col]]) else NA_character_)
+  
+  # Check if all thresholds are NA
+  if (all(is.na(Thres_vals))) {
+    msg_table <- tibble(Message = paste0("No thresholds computed for ", model_label)) %>%
+      gt() %>%
+      tab_header(title = paste("Isotonic Thresholds for", model_label)) %>%
+      cols_label(Message = "") %>%
+      cols_align(align = "left") %>%
+      opt_align_table_header(align = "left") %>%
+      opt_stylize(style = 6, color = 'cyan') %>%
+      tab_options(
+        table.font.size = px(16),
+        table.width = pct(60)
+      ) %>%
+      tab_style(
+        style = list(
+          cell_fill(color = "#016795"),
+          cell_text(weight = "bold"),
+          cell_text(v_align = "middle"),
+          cell_text(color = "white")
+        ),
+        locations = cells_title()
+      ) %>%
+      tab_style(
+        style = list(
+          cell_fill(color = "#9edee0"),
+          cell_text(weight = "bold"),
+          cell_text(color = "black"),
+          cell_text(v_align = "middle")
+        ),
+        locations = list(
+          cells_stubhead(),
+          cells_column_labels(),
+          cells_body(columns = Message)
+        )
+      )
+    
+    if (!is.null(save_path)) {
+      gtsave(msg_table, filename = save_path)
+    }
+    
+    return(msg_table)
+  }
+  
+  # Construct final range labels (Thres1 to Thres8 + NA for group 9)
+  Range_vals <- c(Thres_vals, NA_character_)
+  
+  # Build table and remove rows where ALL three are NA
+  compo_table <- tibble(
+    Group = group_indices,
+    N = N_vals,
+    Risk = round(Risk_vals, 2),
+    Range = Range_vals
+  ) %>%
+    filter(!(is.na(N) & is.na(Risk) & is.na(Range)))
+  
+  # Build gt table
+  gt_tbl <- compo_table %>%
+    gt() %>%
+    tab_header(title = paste("Isotonic Thresholds for", model_label)) %>%
+    fmt_number(columns = Risk, decimals = 2) %>%
+    cols_label(
+      Group = "Group",
+      N = "Sample Size",
+      Risk = "Estimated Risk",
+      Range = "Hb Range"
+    ) %>%
+    cols_align(align = "left") %>%
+    opt_align_table_header(align = "left") %>%
+    opt_stylize(style = 6, color = 'cyan') %>%
+    tab_options(
+      table.font.size = px(12),
+      table.width = pct(60)
+    ) %>%
+    tab_style(
+      style = list(
+        cell_fill(color = "#016795"),
+        cell_text(weight = "bold"),
+        cell_text(v_align = "middle"),
+        cell_text(color = "white")
+      ),
+      locations = cells_title()
+    ) %>%
+    tab_style(
+      style = list(
+        cell_fill(color = "#9edee0"),
+        cell_text(weight = "bold"),
+        cell_text(color = "black"),
+        cell_text(v_align = "middle")
+      ),
+      locations = list(
+        cells_stubhead(),
+        cells_column_labels()
+      )
+    )
+  
+  if (!is.null(save_path)) {
+    gtsave(gt_tbl, filename = save_path)
+  }
+  
+  return(gt_tbl)
+}
+
+
+# Helper function to draw PNG full-plot
+plot_image <- function(file_path) {
+  img <- readPNG(file_path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Function to draw 1 row of .25/.50 plot + table, with trimester heading
+plot_vioplot_table_pair <- function(vioplot_25, table_25, vioplot_50, table_50, trimester_label = "") {
+  layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, byrow = TRUE)
+  layout(layout_matrix, heights = c(3, 1))
+  par(mar = c(0, 0, 0, 0), oma = c(1, 1, 3, 1), xpd = NA)  # Use oma for outer title
+  plot_image(vioplot_25)
+  plot_image(vioplot_50)
+  plot_image(table_25)
+  plot_image(table_50)
+  
+  # Add trimester subheading at the top center
+   mtext(trimester_label, side = 3, outer = TRUE, line = 1, adj = 0, cex = 1.5, font = 1)
+}
+
+```
+
+\newpage
+
+# Hemoglobin by gestational age (CBC only)
+
+```{r scatter plot}
+# Filter exactly what you plot
+plot_cbc <- df_hb_long2 %>% 
+  select(MOMID, PREGID, SITE, ga_wks, hb) %>%
+  filter(ga_wks > 0, ga_wks < 42, hb > 0, hb < 30)
+
+# Per-site counts + a fixed left/top position (shared scales across facets)
+site_n <- plot_cbc %>%
+  count(SITE, name = "n") %>%
+  mutate(
+    x = floor(min(plot_cbc$ga_wks, na.rm = TRUE)) + 0.2,     # a bit inside the left edge
+    y = max(plot_cbc$hb, na.rm = TRUE) - 0.2,                # a bit below the top
+    lab = paste0("n = ", n)
+  )
+
+plot_cbc %>% 
+  ggplot(aes(x = ga_wks, y = hb)) +
+  geom_point(alpha = 0.25, color = "#016795", size = 0.1) +
+  # <-- add the n labels inside each facet panel
+  geom_text(data = site_n,
+            aes(x = x, y = y, label = lab),
+            inherit.aes = FALSE, hjust = 0, vjust = 1, size = 2.5) +
+  scale_x_continuous(breaks = seq(floor(min(plot_cbc$ga_wks)), max(plot_cbc$ga_wks), 1)) + 
+  xlab("Gestational Age (weeks)") +
+  ylab("Hemoglobin (g/dL)") + 
+  facet_grid(rows = vars(SITE)) +
+  theme_bw() +  
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 7),
+        axis.title = element_text(size = 8), 
+        strip.text = element_text(size = 7.2),
+        strip.background = element_rect(fill = "white")) +
+  scale_color_identity(name = "", breaks = c("#016795"), guide = "legend",
+                       labels = c("Hemoglobin"))
+
+```
+
+
+\newpage
+
+# Distribution of Hb Data included in analysis
+
+## All Trimesters
+
+This plot shows the distribution of hemoglobin values used in the analysis. For each participant, a single Hb measurement was selected --- specifically, the value farthest from the population median --- to capture the most extreme physiological variation per individual.
+
+```{r all_table_prep, echo=FALSE, message=FALSE, warning=FALSE, fig.align="center", fig.width=6, fig.height=5, out.width="100%"}
+
+library(dplyr)
+library(tidyr)
+library(gt)
+library(ggplot2)
+
+# STEP 1: Derive trimester from GA if missing (unchanged + enforce levels)
+final_hb <- df_hb_exm_anc %>%
+  dplyr::mutate(
+    trimester_final = dplyr::case_when(
+      !is.na(trimester) ~ as.character(trimester),
+      !is.na(ga_wks) & ga_wks < 14 ~ "1",
+      !is.na(ga_wks) & ga_wks < 28 ~ "2",
+      !is.na(ga_wks) ~ "3",
+      TRUE ~ NA_character_
+    ),
+    trimester_final = factor(trimester_final, levels = c("1","2","3"))
+  ) %>%
+  dplyr::filter(!is.na(trimester_final), !is.na(SITE), !is.na(hb)) %>%
+  dplyr::ungroup()
+
+# STEP 2: Count + median by site & trimester
+trimester_stats <- final_hb %>%
+  dplyr::group_by(SITE, trimester_final) %>%
+  dplyr::summarise(
+    n = dplyr::n(),
+    median_hb = median(hb, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  # ensure every SITE has rows for all trimester levels
+  tidyr::complete(SITE, trimester_final, fill = list(n = 0, median_hb = NA_real_))
+
+# STEP 3: Percent within site + wide columns (n% + median per trimester)
+rowwise_summary <- trimester_stats %>%
+  dplyr::group_by(SITE) %>%
+  dplyr::mutate(
+    site_total = sum(n),
+    percent = round(100 * n / ifelse(site_total == 0, NA, site_total), 1),
+    npct = paste0(n, " (", percent, "%)")
+  ) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(SITE, trimester_final, npct, median_hb) %>%
+  tidyr::pivot_wider(
+    names_from  = trimester_final,
+    values_from = c(npct, median_hb),
+    names_glue  = "T{trimester_final}_{.value}"   # <- valid names: T1_npct, T1_median_hb, ...
+  )
+
+# STEP 4: Total row (counts + overall median by trimester)
+total_row <- final_hb %>%
+  dplyr::group_by(trimester_final) %>%
+  dplyr::summarise(
+    n = dplyr::n(),
+    median_hb = median(hb, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(SITE = "Total") %>%
+  dplyr::group_by(SITE) %>%
+  dplyr::mutate(
+    site_total = sum(n),
+    percent = round(100 * n / ifelse(site_total == 0, NA, site_total), 1),
+    npct = paste0(n, " (", percent, "%)")
+  ) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(SITE, trimester_final, npct, median_hb) %>%
+  tidyr::pivot_wider(
+    names_from  = trimester_final,
+    values_from = c(npct, median_hb),
+    names_glue  = "T{trimester_final}_{.value}"
+  )
+
+# STEP 5: Combine rows and format order
+trimester_summary <- dplyr::bind_rows(rowwise_summary, total_row) %>%
+  dplyr::mutate(SITE = factor(SITE, levels = c(sort(unique(final_hb$SITE)), "Total"))) %>%
+  dplyr::arrange(SITE)
+
+# STEP 6: GT Table Styling
+gt_table <- trimester_summary %>%
+  gt::gt() %>%
+  gt::tab_header(
+    title = "Trimester Distribution of Hb Data in Aim 2 Analysis",
+    subtitle = "Per trimester: n (within-site %) and Median Hb (g/dL)"
+  ) %>%
+  gt::tab_spanner(label = "Trimester 1", columns = c(T1_npct, T1_median_hb)) %>%
+  gt::tab_spanner(label = "Trimester 2", columns = c(T2_npct, T2_median_hb)) %>%
+  gt::tab_spanner(label = "Trimester 3", columns = c(T3_npct, T3_median_hb)) %>%
+  gt::cols_label(
+    SITE = "Site",
+    T1_npct = "n (%)", T1_median_hb = "Median Hb",
+    T2_npct = "n (%)", T2_median_hb = "Median Hb",
+    T3_npct = "n (%)", T3_median_hb = "Median Hb"
+  ) %>%
+  gt::tab_style(
+    style = list(
+      gt::cell_fill(color = "#016795"),
+      gt::cell_text(weight = "bold", color = "white", v_align = "middle")
+    ),
+    locations = gt::cells_title()
+  ) %>%
+  gt::tab_style(
+    style = list(
+      gt::cell_fill(color = "#9edee0"),
+      gt::cell_text(weight = "bold", color = "black", v_align = "middle")
+    ),
+    locations = list(
+      gt::cells_stubhead(),
+      gt::cells_column_spanners(),
+      gt::cells_column_labels()
+    )
+  ) %>%
+  gt::tab_style(
+    style = gt::cell_text(weight = "bold"),
+    locations = gt::cells_body(rows = SITE == "Total")
+  ) %>%
+  gt::tab_style(
+    style = list(
+      gt::cell_fill(color = "#f2fafa"),
+      gt::cell_text(weight = "bold")
+    ),
+    locations = gt::cells_body(columns = SITE)
+  ) %>%
+  cols_align(align = "center") %>%              # ← left-align all columns
+  opt_align_table_header("left") %>%
+  gt::tab_source_note(
+    source_note = "Percentages represent within-site trimester distribution. Median Hb in g/dL."
+  )
+
+gtsave(gt_table, filename = paste0(maindir, "/iso_results/trimester_table.png"))
+
+```
+
+```{r all_table, echo=FALSE, message=FALSE, warning=FALSE, fig.align="center", fig.width=6, fig.height=5, out.width="100%"}
+knitr::include_graphics(paste0(maindir, "/iso_results/trimester_table.png"))
+```
+
+```{r all_plot, echo=FALSE, message=FALSE, warning=FALSE, fig.align="center", fig.width=9, fig.height=7, out.width="100%"}
+
+# Clamp and round Hb values
+plot_all_hb <- df_hb_exm_anc %>%
+  mutate(hb_exm = round(pmin(pmax(hb_exm, 5), 18), 1)) %>%
+  
+  # Compute stacking position
+  group_by(SITE, hb_exm) %>%
+  arrange(trimester, .by_group = TRUE) %>%
+  mutate(y_count = row_number()) %>%
+  ungroup() %>% 
+  mutate(trimester = factor(trimester,
+                          levels = c(1, 2, 3),
+                          labels = c("1st Trimester", "2nd Trimester", "3rd Trimester"))) %>% 
+  filter (!is.na(trimester) & !is.na(hb) & !is.na(SITE))
+
+# Plot
+ggplot(plot_all_hb, aes(x = hb_exm, y = y_count, color = factor(trimester))) +
+  geom_point(alpha = 0.7, size = 1) +
+  scale_color_brewer(palette = "Set2", name = "Trimester") +
+  scale_x_continuous(
+    breaks = seq(5, 18, 1),
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+ # facet_wrap(~ SITE, scales = "free_y") +
+  labs(
+    x = "Hemoglobin (g/dL)",
+    y = "Count"
+  ) +
+ facet_grid(rows = vars(SITE), scales = "free_y") +
+  theme_bw() +  
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust=1),
+        legend.position="bottom",
+        legend.title = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 7),
+        axis.title = element_text(size = 8), 
+        strip.text = element_text(size = 7.2)) + 
+  theme(strip.background=element_rect(fill="white"))
+
+
+```
+
+\newpage
+
+# Prevalence of ReMAPP maternal and infant outcomes 
+
+```{r, echo=FALSE}
+# For infant outcomes
+infant_outcome_info <- list(
+  list(data = df_inf_preterm37, outcome_var = "preterm37", label = "Preterm <37wks"),
+  list(data = df_inf_preterm34, outcome_var = "preterm34", label = "Preterm <34wks"),
+  list(data = df_inf_lbw2500, outcome_var = "lbw2500", label = "LBW <2500g"),
+  list(data = df_inf_lbw1500, outcome_var = "lbw1500", label = "LBW <1500g"),
+  list(data = df_inf_sga10, outcome_var = "sga10", label = "SGA <10th percentile"),
+  list(data = df_inf_sga3, outcome_var = "sga3", label = "SGA <3rd percentile"),
+  list(data = df_inf_mortality, outcome_var = "neo_mortality", label = "Neonatal Mortality"),
+  list(data = df_inf_psbi, outcome_var = "inf_psbi", label = "Neonatal PSBI"),
+  list(data = df_inf_asph, outcome_var = "inf_asph", label = "Neonatal Asphyxia"),
+  list(data = df_inf_stillbirth20, outcome_var = "inf_stillbirth20", label = "Stillbirth 20wks"),
+  list(data = df_inf_stillbirth28, outcome_var = "inf_stillbirth28", label = "Stillbirth 28wks")
+)
+
+# For maternal outcomes
+maternal_outcome_info <- list(
+  list(data = df_mat_compo, outcome_var = "mat_out_compo", label = "Maternal Composite Outcome"),
+  list(data = df_mat_pph, outcome_var = "HEM_PPH", label = "Postpartum hemorrhage"),
+  list(data = df_mat_ppa_pnc6, outcome_var = "ppa_pnc6", label = "PPA by PNC6"),
+  list(data = df_mat_ppa_pnc26, outcome_var = "ppa_pnc26", label = "PPA by PNC26"),
+  list(data = df_mat_pprom, outcome_var = "pprom", label = "PPROM"),
+  list(data = df_mat_preclamp, outcome_var = "preclamp", label = "Preeclampsia"),
+  list(data = df_mat_anc_dpr, outcome_var = "depress", label = "Depression (ANC)"),
+  list(data = df_mat_pnc_dpr_pnc6, outcome_var = "depress", label = "Depression (PNC)")
+  # list(data = df_mat_anc_fat, outcome_var = "fatigued", label = "Fatigued (ANC)"),
+  # list(data = df_mat_pnc_fat_pnc6, outcome_var = "fatigued", label = "Fatigued (PNC)")
+)
+
+
+summarize_outcome_mat <- function(data, outcome_var, outcome_name, hb_var = "hb") {
+  data_clean <- data %>%
+    filter(!is.na(.data[[outcome_var]]), .data[[hb_var]] > 0) %>%
+    select(MOMID, PREGID, SITE, .data[[outcome_var]], .data[[hb_var]]) %>%
+    distinct() %>%
+    ungroup()
+
+  total_n <- nrow(data_clean)
+  yes_n <- sum(data_clean[[outcome_var]] == 1, na.rm = TRUE)
+  no_n <- sum(data_clean[[outcome_var]] == 0, na.rm = TRUE)
+  percent_yes <- if (total_n > 0) yes_n / total_n * 100 else NA_real_
+  percent_no <- if (total_n > 0) no_n / total_n * 100 else NA_real_
+  
+  # Mean and SD for Yes
+  stats_yes <- data_clean %>%
+    filter(.data[[outcome_var]] == 1) %>%
+    summarise(
+      mean_hb = mean(.data[[hb_var]], na.rm = TRUE),
+      sd_hb = sd(.data[[hb_var]], na.rm = TRUE)
+    )
+
+  # Mean and SD for No
+  stats_no <- data_clean %>%
+    filter(.data[[outcome_var]] == 0) %>%
+    summarise(
+      mean_hb = mean(.data[[hb_var]], na.rm = TRUE),
+      sd_hb = sd(.data[[hb_var]], na.rm = TRUE)
+    )
+
+tibble(
+    Outcome = outcome_name,
+    N = total_n,
+    `Yes (n%)` = paste0(yes_n, " (", round(percent_yes, 1), "%)"),
+    #`No (n%)` = paste0(no_n, " (", round(percent_no, 1), "%)"),
+    `Hb (Yes): mean ± SD` = paste0(round(stats_yes$mean_hb, 1), " ± ", round(stats_yes$sd_hb, 2)),
+    #`Hb (No): mean ± SD` = paste0(round(stats_no$mean_hb, 1), " ± ", round(stats_no$sd_hb, 2))
+  )
+}
+
+summarize_outcome_inf <- function(data, outcome_var, outcome_name, hb_var = "hb") {
+  data_clean <- data %>%
+    filter(!is.na(.data[[outcome_var]]), .data[[hb_var]] > 0) %>%
+    select(MOMID, PREGID, INFANTID, SITE, .data[[outcome_var]], .data[[hb_var]]) %>%
+    distinct() %>%
+    ungroup()
+
+  total_n <- nrow(data_clean)
+  yes_n <- sum(data_clean[[outcome_var]] == 1, na.rm = TRUE)
+  no_n <- sum(data_clean[[outcome_var]] == 0, na.rm = TRUE)
+  percent_yes <- if (total_n > 0) yes_n / total_n * 100 else NA_real_
+  percent_no <- if (total_n > 0) no_n / total_n * 100 else NA_real_
+  
+  # Mean and SD for Yes
+  stats_yes <- data_clean %>%
+    filter(.data[[outcome_var]] == 1) %>%
+    summarise(
+      mean_hb = mean(.data[[hb_var]], na.rm = TRUE),
+      sd_hb = sd(.data[[hb_var]], na.rm = TRUE)
+    )
+
+  # Mean and SD for No
+  stats_no <- data_clean %>%
+    filter(.data[[outcome_var]] == 0) %>%
+    summarise(
+      mean_hb = mean(.data[[hb_var]], na.rm = TRUE),
+      sd_hb = sd(.data[[hb_var]], na.rm = TRUE)
+    )
+
+tibble(
+    Outcome = outcome_name,
+    N = total_n,
+    `Yes (n%)` = paste0(yes_n, " (", round(percent_yes, 1), "%)"),
+    #`No (n%)` = paste0(no_n, " (", round(percent_no, 1), "%)"),
+    `Hb (Yes): mean ± SD` = paste0(round(stats_yes$mean_hb, 1), " ± ", round(stats_yes$sd_hb, 2)),
+    #`Hb (No): mean ± SD` = paste0(round(stats_no$mean_hb, 1), " ± ", round(stats_no$sd_hb, 2))
+  )
+}
+# Infant summary
+infant_summary_table <- bind_rows(
+  lapply(infant_outcome_info, function(x) {
+    summarize_outcome_inf(x$data, x$outcome_var, x$label)
+  })
+)
+
+# Infant summary
+maternal_summary_table <- bind_rows(
+  lapply(maternal_outcome_info, function(x) {
+    summarize_outcome_mat(x$data, x$outcome_var, x$label)
+  })
+)
+
+
+tb_maternal_out_sum <- tb_theme4(maternal_summary_table) %>%
+  tab_header(
+    title = md("**Table. Prevalence of Maternal Outcomes**")
+  ) %>%
+  cols_align(
+    align = "left",
+    columns = "Outcome"
+  ) %>%
+  cols_align(
+    align = "center",
+    columns = everything() & !starts_with("Outcome")
+  ) %>%
+  tab_footnote(
+    footnote = "Yes (n%): Number and percentage of participants with the outcome present (i.e., outcome = Yes).",
+    locations = cells_title(groups = "title")
+  ) %>%
+  # tab_footnote(
+  #   footnote = "No (n%): Number and percentage of participants without the outcome (i.e., outcome = No).",
+  #   locations = cells_title(groups = "title")
+  # ) %>%
+  tab_footnote(
+    footnote = "N: Total number of participants with non-missing outcome and hemoglobin data.",
+    locations = cells_title(groups = "title")
+  ) %>%
+  tab_footnote(
+    footnote = "Hb (Yes): mean ± SD: Hemoglobin concentration (g/dL), reported as mean ± standard deviation separately for outcome = Yes groups.",
+    locations = cells_title(groups = "title")
+  )
+
+# Save the table
+gtsave(tb_maternal_out_sum, filename = "tb_maternal_out_sum.png", expand = 10)
+
+tb_infant_out_sum <- tb_theme4(infant_summary_table) %>%
+  tab_header(
+    title = md("**Table. Prevalence of Infant Outcomes**")
+  ) %>%
+cols_align(
+    align = "left",
+    columns = "Outcome"
+  ) %>%
+  cols_align(
+    align = "center",
+    columns = everything() & !starts_with("Outcome")
+  ) %>%
+  tab_footnote(
+    footnote = "`Yes (n%)`: Number and percentage of participants with the outcome present (i.e., outcome = Yes)."
+  ) %>%
+  tab_footnote(
+    footnote = "`No (n%)`: Number and percentage of participants without the outcome (i.e., outcome = No)."
+  ) %>%
+  tab_footnote(
+    footnote = "`N`: Total number of participants with non-missing outcome and hemoglobin data."
+  ) %>%
+  tab_footnote(
+    footnote = "`Hb (Yes): mean ± SD`: Hemoglobin concentration (g/dL), reported as mean ± standard deviation separately for outcome = Yes groups."
+  ) %>%
+  gtsave("tb_infant_out_sum.png", expand = 10)
+
+
+```
+
+```{r, out.width='100%', fig.width=8, fig.height=6}
+knitr::include_graphics("tb_maternal_out_sum.png")
+
+knitr::include_graphics("tb_infant_out_sum.png")
+```
+
+```{r}
+# infant_outcome_trim1<- list(
+#   list(data = df_inf_preterm37_trim1, outcome_var = "preterm37", label = "Preterm <37wks"),
+#   list(data = df_inf_preterm34_trim1, outcome_var = "preterm34", label = "Preterm <34wks"),
+#   list(data = df_inf_lbw2500_trim1, outcome_var = "lbw2500", label = "LBW <2500g"),
+#   list(data = df_inf_lbw1500_trim1, outcome_var = "lbw1500", label = "LBW <1500g"),
+#   list(data = df_inf_sga10_trim1, outcome_var = "sga10", label = "SGA <10th percentile"),
+#   list(data = df_inf_sga3_trim1, outcome_var = "sga3", label = "SGA <3rd percentile"),
+#   list(data = df_inf_psbi_trim1, outcome_var = "inf_psbi", label = "Neonatal PSBI"),
+#   list(data = df_inf_asph_trim1, outcome_var = "inf_asph", label = "Neonatal Asphyxia"),
+#   list(data = df_inf_stillbirth20_trim1, outcome_var = "inf_stillbirth20", label = "Stillbirth 20wks"),
+#   list(data = df_inf_stillbirth28_trim1, outcome_var = "inf_stillbirth28", label = "Stillbirth 28wks")
+# )
+# 
+# # For maternal outcomes
+# maternal_outcome_trim1 <- list(
+#   list(data = df_mat_pph_trim1, outcome_var = "HEM_PPH", label = "Postpartum hemorrhage"),
+#   list(data = df_mat_ppa_pnc6_trim1, outcome_var = "ppa_pnc6", label = "PPA by PNC6"),
+#   list(data = df_mat_ppa_pnc26_trim1, outcome_var = "ppa_pnc26", label = "PPA by PNC26"),
+#   list(data = df_mat_pprom_trim1, outcome_var = "pprom", label = "PPROM"),
+#   list(data = df_mat_preclamp_trim1, outcome_var = "preclamp", label = "Preeclampsia")
+# )
+# 
+# # Infant summary
+# infant_summary_trim1<- bind_rows(
+#   lapply(infant_outcome_trim1, function(x) {
+#     summarize_outcome_one_row(x$data, x$outcome_var, x$label)
+#   })
+# )
+# 
+# # Infant summary
+# maternal_summary_trim1 <- bind_rows(
+#   lapply(maternal_outcome_trim1, function(x) {
+#     summarize_outcome_one_row(x$data, x$outcome_var, x$label)
+#   })
+# )
+# 
+# 
+# tb_maternal_out_trim1 <- tb_theme4(maternal_summary_trim1) %>%
+#   tab_header(
+#     title = md("**Table. Summary observations of maternal outcomes at trimester 1**")
+#   ) %>%
+#   tab_footnote(
+#     footnote = "n (%) number and porportion of participants with the outcome i.e Outcome == Yes"
+#   )%>%
+#   tab_footnote(
+#     footnote = "N: is the total number of participants with non-missing data for the outcome." )%>% 
+#   tab_footnote(
+#     footnote = "Hb: Hemoglobin concentration calculated among participants with a positive outcome") %>% 
+#   gtsave("tb_maternal_out_trim1.png", expand = 10)
+# 
+# 
+# tb_infant_out_trim1 <- tb_theme4(infant_summary_trim1) %>%
+#   tab_header(
+#     title = md("**Table. Summary observations of infant outcomes at trimester 1**")
+#   ) %>%
+#   tab_footnote(
+#     footnote = "n (%) number and porportion of participants with the outcome i.e Outcome == Yes"
+#   )%>%
+#   tab_footnote(
+#     footnote = "N: is the total number of participants with non-missing data for the outcome." )%>% 
+#   tab_footnote(
+#     footnote = "Hb: Hemoglobin concentration calculated among participants with a positive outcome") %>% 
+#   gtsave("tb_infant_out_trim1.png", expand = 10)
+# 
+
+```
+
+```{r, out.width='60%', fig.width=8, fig.height=6}
+# knitr::include_graphics("tb_maternal_out_trim1.png")
+#
+# knitr::include_graphics("tb_infant_out_trim1.png")
+```
+
+\newpage
+
+# Isotonic and Spline Regression for Hemoglobin Decision Thresholds
+
+To establish clinically relevant hemoglobin (Hb) thresholds associated with adverse maternal and infant outcomes, we applied two complementary statistical modeling approaches:
+
+-   **Restricted cubic spline regression**, and
+-   **Isotonic regression**.
+
+These methods are ideal for understanding both gradual trends and sharp changes in risk across the continuous range of hemoglobin values.
+
+**📊 Outcomes Modeled**
+
+We examined associations between antenatal Hb and the following outcomes:
+
+-   **Perinatal**: Preterm birth (\<37 and \<34 weeks), low birthweight (\<2500g and \<1500g), small for gestational age (\<10th and \<3rd percentiles), stillbirths (<20 and <28 weeks), PSBI, ASPH, and neonatal hyperbilirubinemia.
+-   **Maternal**: Preeclampsia, postpartum hemorrhage (PPH), premature rupture of membranes (PPROM), and postnatal anemia at 6 weeks (PNC6) and 26 weeks (PNC26).
+-   **Mental health & well-being**: EPDS (depression) and fatigue scores during pregnancy and postpartum.
+-   **Composite**: Meeting any of the following: low birthweight (\<2500g), preterm birth (\<37 weeks), or SGA \<10th percentile.
+
+Each outcome was modeled **separately** to assess risk variation across the hemoglobin distribution.
+
+**⚙️ Data Preprocessing**
+
+-   Hemoglobin values were **truncated at clinical extremes** to avoid outlier influence:
+    -   Values **\<5 g/dL** were set to **5 g/dL**
+    -   Values **\>18 g/dL** were set to **18 g/dL**
+-   These boundaries ensure stable model estimation in clinically plausible ranges while excluding rare outliers.
+
+**🔹 Spline Regression**
+
+We used **restricted cubic splines (RCS)** to flexibly model the association between hemoglobin and each outcome. This method captures non-linear relationships while avoiding overfitting.
+
+-   Models were adjusted for relevant covariates (e.g., site).
+-   Predicted probabilities or scores were plotted across Hb values using **Bootstrap confidence intervals**, to account for uncertainty and enhance robustness.
+
+⚠ **Note**: Interpretation at high Hb levels (\>15 g/dL) should be cautious due to limited data density.
+
+**🔻 Isotonic Regression**
+
+To detect sharp changes in risk, we applied **isotonic regression**, which assumes monotonicity (risk only increases or decreases with Hb), without assuming a specific shape.
+
+Key steps:
+
+1.  **Binning**: Hb values were grouped into **fixed-width bins** (we fit two models, binning by 0.25 intervals and 0.50 intervals).
+2.  **Testing**: Each adjacent pair of bins was statistically compared using logistic regression models (including covariates: site).
+3.  **Threshold detection**: Bins with no significant difference were merged, while significantly different ones formed breakpoints---these represent **decision thresholds**.
+
+
+
+**📌 Summary**
+
+| Method       | Purpose                        | Output                        |
+|------------------|------------------------------|------------------------|
+| Spline (RCS) | Model smooth non-linear trends | Continuous risk curve with CI |
+| Isotonic     | Detect discrete shifts in risk | Step-wise risk thresholds     |
+
+Together, these methods provide complementary insight into the relationship between antenatal hemoglobin and key clinical outcomes---supporting the development of practical, evidence-based decision limits.
+
+\newpage
+
+## Infant outcome
+
+### SVN Composite Outcome
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_compo_25.rda"), "out_compo_25")
+load_and_rename(paste0(maindir, "/iso_results/out_compo_50.rda"), "out_compo_50")
+
+compo_table_25 <- generate_iso_table(
+  out_compo_25,
+  model_label = "SVN Composite Outcome (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/compo_table_25.png")
+)
+
+compo_table_50 <- generate_iso_table(
+  out_compo_50,
+  model_label = "SVN Composite Outcome (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/compo_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_compo_25.png")
+img2 <- paste0(maindir, "/iso_results/compo_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_compo_50.png")
+img4 <- paste0(maindir, "/iso_results/compo_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+-   Composite outcome: birth weight \<2500g (LBW\<2500g), gestational age at birth \<37weeks (Preterm\<37wks) or birth weight below the 10th percentile (SGA\<10th) 
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_compo_25_trim1.rda"), "out_compo_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_compo_50_trim1.rda"), "out_compo_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_compo_25_trim2.rda"), "out_compo_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_compo_50_trim2.rda"), "out_compo_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_compo_25_trim3.rda"), "out_compo_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_compo_50_trim3.rda"), "out_compo_50_trim3")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_compo_25_trim1, "SVN Composite Trim 1 (.25)", paste0(maindir, "/iso_results/compo_table_25_trim1.png"))
+generate_iso_table(out_compo_50_trim1, "SVN Composite Trim 1 (.50)", paste0(maindir, "/iso_results/compo_table_50_trim1.png"))
+generate_iso_table(out_compo_25_trim2, "SVN Composite Trim 2 (.25)", paste0(maindir, "/iso_results/compo_table_25_trim2.png"))
+generate_iso_table(out_compo_50_trim2, "SVN Composite Trim 2 (.50)", paste0(maindir, "/iso_results/compo_table_50_trim2.png"))
+generate_iso_table(out_compo_25_trim3, "SVN Composite Trim 3 (.25)", paste0(maindir, "/iso_results/compo_table_25_trim3.png"))
+generate_iso_table(out_compo_50_trim3, "SVN Composite Trim 3 (.50)", paste0(maindir, "/iso_results/compo_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_compo_25_trim1.png"),
+  paste0(maindir, "/iso_results/compo_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_compo_50_trim1.png"),
+  paste0(maindir, "/iso_results/compo_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_compo_25_trim2.png"),
+  paste0(maindir, "/iso_results/compo_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_compo_50_trim2.png"),
+  paste0(maindir, "/iso_results/compo_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_compo_25_trim3.png"),
+  paste0(maindir, "/iso_results/compo_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_compo_50_trim3.png"),
+  paste0(maindir, "/iso_results/compo_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+\newpage 
+### Low Birthweight <=1500
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_lbw1500_25.rda"), "out_lbw1500_25")
+load_and_rename(paste0(maindir, "/iso_results/out_lbw1500_50.rda"), "out_lbw1500_50")
+
+lbw1500_table_25 <- generate_iso_table(
+  out_lbw1500_25,
+  model_label = "Low Birthweight <=1500 (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/lbw1500_table_25.png")
+)
+
+lbw1500_table_50 <- generate_iso_table(
+  out_lbw1500_50,
+  model_label = "Low Birthweight <=1500 (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/lbw1500_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_lbw1500_25.png")
+img2 <- paste0(maindir, "/iso_results/lbw1500_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_lbw1500_50.png")
+img4 <- paste0(maindir, "/iso_results/lbw1500_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_lbw1500_25_trim1.rda"), "out_lbw1500_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_lbw1500_50_trim1.rda"), "out_lbw1500_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_lbw1500_25_trim2.rda"), "out_lbw1500_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_lbw1500_50_trim2.rda"), "out_lbw1500_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_lbw1500_25_trim3.rda"), "out_lbw1500_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_lbw1500_50_trim3.rda"), "out_lbw1500_50_trim3")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_lbw1500_25_trim1, "LBW1500 Trim 1 (.25)", paste0(maindir, "/iso_results/lbw1500_table_25_trim1.png"))
+generate_iso_table(out_lbw1500_50_trim1, "LBW1500 Trim 1 (.50)", paste0(maindir, "/iso_results/lbw1500_table_50_trim1.png"))
+generate_iso_table(out_lbw1500_25_trim2, "LBW1500 Trim 2 (.25)", paste0(maindir, "/iso_results/lbw1500_table_25_trim2.png"))
+generate_iso_table(out_lbw1500_50_trim2, "LBW1500 Trim 2 (.50)", paste0(maindir, "/iso_results/lbw1500_table_50_trim2.png"))
+generate_iso_table(out_lbw1500_25_trim3, "LBW1500 Trim 3 (.25)", paste0(maindir, "/iso_results/lbw1500_table_25_trim3.png"))
+generate_iso_table(out_lbw1500_50_trim3, "LBW1500 Trim 3 (.50)", paste0(maindir, "/iso_results/lbw1500_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_lbw1500_25_trim1.png"),
+  paste0(maindir, "/iso_results/lbw1500_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_lbw1500_50_trim1.png"),
+  paste0(maindir, "/iso_results/lbw1500_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_lbw1500_25_trim2.png"),
+  paste0(maindir, "/iso_results/lbw1500_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_lbw1500_50_trim2.png"),
+  paste0(maindir, "/iso_results/lbw1500_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_lbw1500_25_trim3.png"),
+  paste0(maindir, "/iso_results/lbw1500_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_lbw1500_50_trim3.png"),
+  paste0(maindir, "/iso_results/lbw1500_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+
+\newpage 
+### Low Birthweight <=2500
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_lbw2500_25.rda"), "out_lbw2500_25")
+load_and_rename(paste0(maindir, "/iso_results/out_lbw2500_50.rda"), "out_lbw2500_50")
+
+lbw2500_table_25 <- generate_iso_table(
+  out_lbw2500_25,
+  model_label = "Low Birthweight <=2500 (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/lbw2500_table_25.png")
+)
+
+lbw2500_table_50 <- generate_iso_table(
+  out_lbw2500_50,
+  model_label = "Low Birthweight <=2500 (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/lbw2500_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_lbw2500_25.png")
+img2 <- paste0(maindir, "/iso_results/lbw2500_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_lbw2500_50.png")
+img4 <- paste0(maindir, "/iso_results/lbw2500_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_lbw2500_25_trim1.rda"), "out_lbw2500_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_lbw2500_50_trim1.rda"), "out_lbw2500_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_lbw2500_25_trim2.rda"), "out_lbw2500_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_lbw2500_50_trim2.rda"), "out_lbw2500_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_lbw2500_25_trim3.rda"), "out_lbw2500_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_lbw2500_50_trim3.rda"), "out_lbw2500_50_trim3")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_lbw2500_25_trim1, "LBW2500 Trim 1 (.25)", paste0(maindir, "/iso_results/lbw2500_table_25_trim1.png"))
+generate_iso_table(out_lbw2500_50_trim1, "LBW2500 Trim 1 (.50)", paste0(maindir, "/iso_results/lbw2500_table_50_trim1.png"))
+generate_iso_table(out_lbw2500_25_trim2, "LBW2500 Trim 2 (.25)", paste0(maindir, "/iso_results/lbw2500_table_25_trim2.png"))
+generate_iso_table(out_lbw2500_50_trim2, "LBW2500 Trim 2 (.50)", paste0(maindir, "/iso_results/lbw2500_table_50_trim2.png"))
+generate_iso_table(out_lbw2500_25_trim3, "LBW2500 Trim 3 (.25)", paste0(maindir, "/iso_results/lbw2500_table_25_trim3.png"))
+generate_iso_table(out_lbw2500_50_trim3, "LBW2500 Trim 3 (.50)", paste0(maindir, "/iso_results/lbw2500_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_lbw2500_25_trim1.png"),
+  paste0(maindir, "/iso_results/lbw2500_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_lbw2500_50_trim1.png"),
+  paste0(maindir, "/iso_results/lbw2500_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_lbw2500_25_trim2.png"),
+  paste0(maindir, "/iso_results/lbw2500_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_lbw2500_50_trim2.png"),
+  paste0(maindir, "/iso_results/lbw2500_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_lbw2500_25_trim3.png"),
+  paste0(maindir, "/iso_results/lbw2500_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_lbw2500_50_trim3.png"),
+  paste0(maindir, "/iso_results/lbw2500_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+
+\newpage 
+### SGA (Small for Gestational Age) 10th centile
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_sga10_25.rda"), "out_sga10_25")
+load_and_rename(paste0(maindir, "/iso_results/out_sga10_50.rda"), "out_sga10_50")
+
+sga10_table_25 <- generate_iso_table(
+  out_sga10_25,
+  model_label = "SGA (Small for Gestational Age) 10th centile (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/sga10_table_25.png")
+)
+
+sga10_table_50 <- generate_iso_table(
+  out_sga10_50,
+  model_label = "SGA (Small for Gestational Age) 10th centile (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/sga10_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_sga10_25.png")
+img2 <- paste0(maindir, "/iso_results/sga10_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_sga10_50.png")
+img4 <- paste0(maindir, "/iso_results/sga10_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_sga10_25_trim1.rda"), "out_sga10_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_sga10_50_trim1.rda"), "out_sga10_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_sga10_25_trim2.rda"), "out_sga10_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_sga10_50_trim2.rda"), "out_sga10_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_sga10_25_trim3.rda"), "out_sga10_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_sga10_50_trim3.rda"), "out_sga10_50_trim3")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_sga10_25_trim1, "SGA10 Trim 1 (.25)", paste0(maindir, "/iso_results/sga10_table_25_trim1.png"))
+generate_iso_table(out_sga10_50_trim1, "SGA10 Trim 1 (.50)", paste0(maindir, "/iso_results/sga10_table_50_trim1.png"))
+generate_iso_table(out_sga10_25_trim2, "SGA10 Trim 2 (.25)", paste0(maindir, "/iso_results/sga10_table_25_trim2.png"))
+generate_iso_table(out_sga10_50_trim2, "SGA10 Trim 2 (.50)", paste0(maindir, "/iso_results/sga10_table_50_trim2.png"))
+generate_iso_table(out_sga10_25_trim3, "SGA10 Trim 3 (.25)", paste0(maindir, "/iso_results/sga10_table_25_trim3.png"))
+generate_iso_table(out_sga10_50_trim3, "SGA10 Trim 3 (.50)", paste0(maindir, "/iso_results/sga10_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_sga10_25_trim1.png"),
+  paste0(maindir, "/iso_results/sga10_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_sga10_50_trim1.png"),
+  paste0(maindir, "/iso_results/sga10_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_sga10_25_trim2.png"),
+  paste0(maindir, "/iso_results/sga10_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_sga10_50_trim2.png"),
+  paste0(maindir, "/iso_results/sga10_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_sga10_25_trim3.png"),
+  paste0(maindir, "/iso_results/sga10_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_sga10_50_trim3.png"),
+  paste0(maindir, "/iso_results/sga10_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+\newpage 
+### SGA (Small for Gestational Age) 3rd centile
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_sga3_25.rda"), "out_sga3_25")
+load_and_rename(paste0(maindir, "/iso_results/out_sga3_50.rda"), "out_sga3_50")
+
+sga3_table_25 <- generate_iso_table(
+  out_sga3_25,
+  model_label = "SGA (Small for Gestational Age) 3rd centile (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/sga3_table_25.png")
+)
+
+sga3_table_50 <- generate_iso_table(
+  out_sga3_50,
+  model_label = "SGA (Small for Gestational Age) 3rd centile (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/sga3_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_sga3_25.png")
+img2 <- paste0(maindir, "/iso_results/sga3_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_sga3_50.png")
+img4 <- paste0(maindir, "/iso_results/sga3_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_sga3_25_trim1.rda"), "out_sga3_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_sga3_50_trim1.rda"), "out_sga3_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_sga3_25_trim2.rda"), "out_sga3_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_sga3_50_trim2.rda"), "out_sga3_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_sga3_25_trim3.rda"), "out_sga3_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_sga3_50_trim3.rda"), "out_sga3_50_trim3")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_sga3_25_trim1, "SGA3 Trim 1 (.25)", paste0(maindir, "/iso_results/sga3_table_25_trim1.png"))
+generate_iso_table(out_sga3_50_trim1, "SGA3 Trim 1 (.50)", paste0(maindir, "/iso_results/sga3_table_50_trim1.png"))
+generate_iso_table(out_sga3_25_trim2, "SGA3 Trim 2 (.25)", paste0(maindir, "/iso_results/sga3_table_25_trim2.png"))
+generate_iso_table(out_sga3_50_trim2, "SGA3 Trim 2 (.50)", paste0(maindir, "/iso_results/sga3_table_50_trim2.png"))
+generate_iso_table(out_sga3_25_trim3, "SGA3 Trim 3 (.25)", paste0(maindir, "/iso_results/sga3_table_25_trim3.png"))
+generate_iso_table(out_sga3_50_trim3, "SGA3 Trim 3 (.50)", paste0(maindir, "/iso_results/sga3_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_sga3_25_trim1.png"),
+  paste0(maindir, "/iso_results/sga3_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_sga3_50_trim1.png"),
+  paste0(maindir, "/iso_results/sga3_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_sga3_25_trim2.png"),
+  paste0(maindir, "/iso_results/sga3_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_sga3_50_trim2.png"),
+  paste0(maindir, "/iso_results/sga3_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_sga3_25_trim3.png"),
+  paste0(maindir, "/iso_results/sga3_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_sga3_50_trim3.png"),
+  paste0(maindir, "/iso_results/sga3_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+
+\newpage 
+### Preterm Birth 34weeks
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_preterm34_25.rda"), "out_preterm34_25")
+load_and_rename(paste0(maindir, "/iso_results/out_preterm34_50.rda"), "out_preterm34_50")
+
+preterm34_table_25 <- generate_iso_table(
+  out_preterm34_25,
+  model_label = "Preterm Birth 34weeks (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/preterm34_table_25.png")
+)
+
+preterm34_table_50 <- generate_iso_table(
+  out_preterm34_50,
+  model_label = "Preterm Birth 34weeks (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/preterm34_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_preterm34_25.png")
+img2 <- paste0(maindir, "/iso_results/preterm34_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_preterm34_50.png")
+img4 <- paste0(maindir, "/iso_results/preterm34_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_preterm34_25_trim1.rda"), "out_preterm34_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_preterm34_50_trim1.rda"), "out_preterm34_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_preterm34_25_trim2.rda"), "out_preterm34_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_preterm34_50_trim2.rda"), "out_preterm34_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_preterm34_25_trim3.rda"), "out_preterm34_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_preterm34_50_trim3.rda"), "out_preterm34_50_trim3")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_preterm34_25_trim1, "Preterm 34wks Trim 1 (.25)", paste0(maindir, "/iso_results/preterm34_table_25_trim1.png"))
+generate_iso_table(out_preterm34_50_trim1, "Preterm 34wks Trim 1 (.50)", paste0(maindir, "/iso_results/preterm34_table_50_trim1.png"))
+generate_iso_table(out_preterm34_25_trim2, "Preterm 34wks Trim 2 (.25)", paste0(maindir, "/iso_results/preterm34_table_25_trim2.png"))
+generate_iso_table(out_preterm34_50_trim2, "Preterm 34wks Trim 2 (.50)", paste0(maindir, "/iso_results/preterm34_table_50_trim2.png"))
+generate_iso_table(out_preterm34_25_trim3, "Preterm 34wks Trim 3 (.25)", paste0(maindir, "/iso_results/preterm34_table_25_trim3.png"))
+generate_iso_table(out_preterm34_50_trim3, "Preterm 34wks Trim 3 (.50)", paste0(maindir, "/iso_results/preterm34_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_preterm34_25_trim1.png"),
+  paste0(maindir, "/iso_results/preterm34_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_preterm34_50_trim1.png"),
+  paste0(maindir, "/iso_results/preterm34_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_preterm34_25_trim2.png"),
+  paste0(maindir, "/iso_results/preterm34_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_preterm34_50_trim2.png"),
+  paste0(maindir, "/iso_results/preterm34_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_preterm34_25_trim3.png"),
+  paste0(maindir, "/iso_results/preterm34_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_preterm34_50_trim3.png"),
+  paste0(maindir, "/iso_results/preterm34_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+
+\newpage 
+
+### Preterm Birth 37weeks
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_preterm37_25.rda"), "out_preterm37_25")
+load_and_rename(paste0(maindir, "/iso_results/out_preterm37_50.rda"), "out_preterm37_50")
+
+preterm37_table_25 <- generate_iso_table(
+  out_preterm37_25,
+  model_label = "Preterm Birth 37weeks (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/preterm37_table_25.png")
+)
+
+preterm37_table_50 <- generate_iso_table(
+  out_preterm37_50,
+  model_label = "Preterm Birth 37weeks (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/preterm37_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_preterm37_25.png")
+img2 <- paste0(maindir, "/iso_results/preterm37_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_preterm37_50.png")
+img4 <- paste0(maindir, "/iso_results/preterm37_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_preterm37_25_trim1.rda"), "out_preterm37_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_preterm37_50_trim1.rda"), "out_preterm37_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_preterm37_25_trim2.rda"), "out_preterm37_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_preterm37_50_trim2.rda"), "out_preterm37_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_preterm37_25_trim3.rda"), "out_preterm37_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_preterm37_50_trim3.rda"), "out_preterm37_50_trim3")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_preterm37_25_trim1, "Preterm 37wks Trim 1 (.25)", paste0(maindir, "/iso_results/preterm37_table_25_trim1.png"))
+generate_iso_table(out_preterm37_50_trim1, "Preterm 37wks Trim 1 (.50)", paste0(maindir, "/iso_results/preterm37_table_50_trim1.png"))
+generate_iso_table(out_preterm37_25_trim2, "Preterm 37wks Trim 2 (.25)", paste0(maindir, "/iso_results/preterm37_table_25_trim2.png"))
+generate_iso_table(out_preterm37_50_trim2, "Preterm 37wks Trim 2 (.50)", paste0(maindir, "/iso_results/preterm37_table_50_trim2.png"))
+generate_iso_table(out_preterm37_25_trim3, "Preterm 37wks Trim 3 (.25)", paste0(maindir, "/iso_results/preterm37_table_25_trim3.png"))
+generate_iso_table(out_preterm37_50_trim3, "Preterm 37wks Trim 3 (.50)", paste0(maindir, "/iso_results/preterm37_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_preterm37_25_trim1.png"),
+  paste0(maindir, "/iso_results/preterm37_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_preterm37_50_trim1.png"),
+  paste0(maindir, "/iso_results/preterm37_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_preterm37_25_trim2.png"),
+  paste0(maindir, "/iso_results/preterm37_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_preterm37_50_trim2.png"),
+  paste0(maindir, "/iso_results/preterm37_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_preterm37_25_trim3.png"),
+  paste0(maindir, "/iso_results/preterm37_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_preterm37_50_trim3.png"),
+  paste0(maindir, "/iso_results/preterm37_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+
+\newpage 
+
+### Possible Serious Bacterial Infection (PSBI)
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_psbi_25.rda"), "out_psbi_25")
+load_and_rename(paste0(maindir, "/iso_results/out_psbi_50.rda"), "out_psbi_50")
+
+psbi_table_25 <- generate_iso_table(
+  out_psbi_25,
+  model_label = "Possible Serious Bacterial Infection (PSBI) (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/psbi_table_25.png")
+)
+
+psbi_table_50 <- generate_iso_table(
+  out_psbi_50,
+  model_label = "Possible Serious Bacterial Infection (PSBI) (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/psbi_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_psbi_25.png")
+img2 <- paste0(maindir, "/iso_results/psbi_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_psbi_50.png")
+img4 <- paste0(maindir, "/iso_results/psbi_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_psbi_25_trim1.rda"), "out_psbi_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_psbi_50_trim1.rda"), "out_psbi_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_psbi_25_trim2.rda"), "out_psbi_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_psbi_50_trim2.rda"), "out_psbi_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_psbi_25_trim3.rda"), "out_psbi_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_psbi_50_trim3.rda"), "out_psbi_50_trim3")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_psbi_25_trim1, "PSBI Trim 1 (.25)", paste0(maindir, "/iso_results/psbi_table_25_trim1.png"))
+generate_iso_table(out_psbi_50_trim1, "PSBI Trim 1 (.50)", paste0(maindir, "/iso_results/psbi_table_50_trim1.png"))
+generate_iso_table(out_psbi_25_trim2, "PSBI Trim 2 (.25)", paste0(maindir, "/iso_results/psbi_table_25_trim2.png"))
+generate_iso_table(out_psbi_50_trim2, "PSBI Trim 2 (.50)", paste0(maindir, "/iso_results/psbi_table_50_trim2.png"))
+generate_iso_table(out_psbi_25_trim3, "PSBI Trim 3 (.25)", paste0(maindir, "/iso_results/psbi_table_25_trim3.png"))
+generate_iso_table(out_psbi_50_trim3, "PSBI Trim 3 (.50)", paste0(maindir, "/iso_results/psbi_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_psbi_25_trim1.png"),
+  paste0(maindir, "/iso_results/psbi_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_psbi_50_trim1.png"),
+  paste0(maindir, "/iso_results/psbi_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_psbi_25_trim2.png"),
+  paste0(maindir, "/iso_results/psbi_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_psbi_50_trim2.png"),
+  paste0(maindir, "/iso_results/psbi_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_psbi_25_trim3.png"),
+  paste0(maindir, "/iso_results/psbi_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_psbi_50_trim3.png"),
+  paste0(maindir, "/iso_results/psbi_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+
+
+### Stillbirth 28weeks
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_stillbirth28_25.rda"), "out_stillbirth28_25")
+load_and_rename(paste0(maindir, "/iso_results/out_stillbirth28_50.rda"), "out_stillbirth28_50")
+
+stillbirth28_table_25 <- generate_iso_table(
+  out_stillbirth28_25,
+  model_label = "Stillbirth 28weeks (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/stillbirth28_table_25.png")
+)
+
+stillbirth28_table_50 <- generate_iso_table(
+  out_stillbirth28_50,
+  model_label = "Stillbirth 28weeks (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/stillbirth28_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_stillbirth28_25.png")
+img2 <- paste0(maindir, "/iso_results/stillbirth28_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_stillbirth28_50.png")
+img4 <- paste0(maindir, "/iso_results/stillbirth28_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_stillbirth28_25_trim1.rda"), "out_stillbirth28_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_stillbirth28_50_trim1.rda"), "out_stillbirth28_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_stillbirth28_25_trim2.rda"), "out_stillbirth28_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_stillbirth28_50_trim2.rda"), "out_stillbirth28_50_trim2")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_stillbirth28_25_trim1, "STILLBIRTH28 Trim 1 (.25)", paste0(maindir, "/iso_results/stillbirth28_table_25_trim1.png"))
+generate_iso_table(out_stillbirth28_50_trim1, "STILLBIRTH28 Trim 1 (.50)", paste0(maindir, "/iso_results/stillbirth28_table_50_trim1.png"))
+generate_iso_table(out_stillbirth28_25_trim2, "STILLBIRTH28 Trim 2 (.25)", paste0(maindir, "/iso_results/stillbirth28_table_25_trim2.png"))
+generate_iso_table(out_stillbirth28_50_trim2, "STILLBIRTH28 Trim 2 (.50)", paste0(maindir, "/iso_results/stillbirth28_table_50_trim2.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_stillbirth28_25_trim1.png"),
+  paste0(maindir, "/iso_results/stillbirth28_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_stillbirth28_50_trim1.png"),
+  paste0(maindir, "/iso_results/stillbirth28_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_stillbirth28_25_trim2.png"),
+  paste0(maindir, "/iso_results/stillbirth28_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_stillbirth28_50_trim2.png"),
+  paste0(maindir, "/iso_results/stillbirth28_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+```
+
+\newpage 
+### Stillbirth 20weeks
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_stillbirth20_25.rda"), "out_stillbirth20_25")
+load_and_rename(paste0(maindir, "/iso_results/out_stillbirth20_50.rda"), "out_stillbirth20_50")
+
+stillbirth20_table_25 <- generate_iso_table(
+  out_stillbirth20_25,
+  model_label = "Stillbirth 20weeks (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/stillbirth20_table_25.png")
+)
+
+stillbirth20_table_50 <- generate_iso_table(
+  out_stillbirth20_50,
+  model_label = "Stillbirth 20weeks (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/stillbirth20_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_stillbirth20_25.png")
+img2 <- paste0(maindir, "/iso_results/stillbirth20_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_stillbirth20_50.png")
+img4 <- paste0(maindir, "/iso_results/stillbirth20_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–2
+load_and_rename(paste0(maindir, "/iso_results/out_stillbirth20_25_trim1.rda"), "out_stillbirth20_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_stillbirth20_50_trim1.rda"), "out_stillbirth20_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_stillbirth20_25_trim2.rda"), "out_stillbirth20_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_stillbirth20_50_trim2.rda"), "out_stillbirth20_50_trim2")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_stillbirth20_25_trim1, "STILLBIRTH20 Trim 1 (.25)", paste0(maindir, "/iso_results/stillbirth20_table_25_trim1.png"))
+generate_iso_table(out_stillbirth20_50_trim1, "STILLBIRTH20 Trim 1 (.50)", paste0(maindir, "/iso_results/stillbirth20_table_50_trim1.png"))
+generate_iso_table(out_stillbirth20_25_trim2, "STILLBIRTH20 Trim 2 (.25)", paste0(maindir, "/iso_results/stillbirth20_table_25_trim2.png"))
+generate_iso_table(out_stillbirth20_50_trim2, "STILLBIRTH20 Trim 2 (.50)", paste0(maindir, "/iso_results/stillbirth20_table_50_trim2.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_stillbirth20_25_trim1.png"),
+  paste0(maindir, "/iso_results/stillbirth20_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_stillbirth20_50_trim1.png"),
+  paste0(maindir, "/iso_results/stillbirth20_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_stillbirth20_25_trim2.png"),
+  paste0(maindir, "/iso_results/stillbirth20_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_stillbirth20_50_trim2.png"),
+  paste0(maindir, "/iso_results/stillbirth20_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+```
+\newpage 
+### Neonatal Mortality
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_mortality_25.rda"), "out_mortality_25")
+load_and_rename(paste0(maindir, "/iso_results/out_mortality_50.rda"), "out_mortality_50")
+
+mortality_table_25 <- generate_iso_table(
+  out_mortality_25,
+  model_label = "Neonatal Mortality (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/mortality_table_25.png")
+)
+
+mortality_table_50 <- generate_iso_table(
+  out_mortality_50,
+  model_label = "Neonatal Mortality (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/mortality_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_mortality_25.png")
+img2 <- paste0(maindir, "/iso_results/mortality_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_mortality_50.png")
+img4 <- paste0(maindir, "/iso_results/mortality_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_mortality_25_trim1.rda"), "out_mortality_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_mortality_50_trim1.rda"), "out_mortality_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_mortality_25_trim2.rda"), "out_mortality_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_mortality_50_trim2.rda"), "out_mortality_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_mortality_25_trim3.rda"), "out_mortality_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_mortality_50_trim3.rda"), "out_mortality_50_trim3")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_mortality_25_trim1, "Neonatal Mortality Trim 1 (.25)", paste0(maindir, "/iso_results/mortality_table_25_trim1.png"))
+generate_iso_table(out_mortality_50_trim1, "Neonatal Mortality Trim 1 (.50)", paste0(maindir, "/iso_results/mortality_table_50_trim1.png"))
+generate_iso_table(out_mortality_25_trim2, "Neonatal Mortality Trim 2 (.25)", paste0(maindir, "/iso_results/mortality_table_25_trim2.png"))
+generate_iso_table(out_mortality_50_trim2, "Neonatal Mortality Trim 2 (.50)", paste0(maindir, "/iso_results/mortality_table_50_trim2.png"))
+generate_iso_table(out_mortality_25_trim3, "Neonatal Mortality Trim 3 (.25)", paste0(maindir, "/iso_results/mortality_table_25_trim3.png"))
+generate_iso_table(out_mortality_50_trim3, "Neonatal Mortality Trim 3 (.50)", paste0(maindir, "/iso_results/mortality_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_mortality_25_trim1.png"),
+  paste0(maindir, "/iso_results/mortality_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_mortality_50_trim1.png"),
+  paste0(maindir, "/iso_results/mortality_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_mortality_25_trim2.png"),
+  paste0(maindir, "/iso_results/mortality_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_mortality_50_trim2.png"),
+  paste0(maindir, "/iso_results/mortality_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_mortality_25_trim3.png"),
+  paste0(maindir, "/iso_results/mortality_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_mortality_50_trim3.png"),
+  paste0(maindir, "/iso_results/mortality_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+
+\newpage 
+
+### Birth Asphyxia (ASPH)
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_asph_25.rda"), "out_asph_25")
+load_and_rename(paste0(maindir, "/iso_results/out_asph_50.rda"), "out_asph_50")
+
+asph_table_25 <- generate_iso_table(
+  out_asph_25,
+  model_label = "Birth Asphyxia (ASPH) (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/asph_table_25.png")
+)
+
+asph_table_50 <- generate_iso_table(
+  out_asph_50,
+  model_label = "Birth Asphyxia (ASPH) (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/asph_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_asph_25.png")
+img2 <- paste0(maindir, "/iso_results/asph_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_asph_50.png")
+img4 <- paste0(maindir, "/iso_results/asph_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_asph_25_trim1.rda"), "out_asph_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_asph_50_trim1.rda"), "out_asph_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_asph_25_trim2.rda"), "out_asph_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_asph_50_trim2.rda"), "out_asph_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_asph_25_trim3.rda"), "out_asph_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_asph_50_trim3.rda"), "out_asph_50_trim3")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_asph_25_trim1, "ASPH Trim 1 (.25)", paste0(maindir, "/iso_results/asph_table_25_trim1.png"))
+generate_iso_table(out_asph_50_trim1, "ASPH Trim 1 (.50)", paste0(maindir, "/iso_results/asph_table_50_trim1.png"))
+generate_iso_table(out_asph_25_trim2, "ASPH Trim 2 (.25)", paste0(maindir, "/iso_results/asph_table_25_trim2.png"))
+generate_iso_table(out_asph_50_trim2, "ASPH Trim 2 (.50)", paste0(maindir, "/iso_results/asph_table_50_trim2.png"))
+generate_iso_table(out_asph_25_trim3, "ASPH Trim 3 (.25)", paste0(maindir, "/iso_results/asph_table_25_trim3.png"))
+generate_iso_table(out_asph_50_trim3, "ASPH Trim 3 (.50)", paste0(maindir, "/iso_results/asph_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_asph_25_trim1.png"),
+  paste0(maindir, "/iso_results/asph_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_asph_50_trim1.png"),
+  paste0(maindir, "/iso_results/asph_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_asph_25_trim2.png"),
+  paste0(maindir, "/iso_results/asph_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_asph_50_trim2.png"),
+  paste0(maindir, "/iso_results/asph_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_asph_25_trim3.png"),
+  paste0(maindir, "/iso_results/asph_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_asph_50_trim3.png"),
+  paste0(maindir, "/iso_results/asph_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+\newpage 
+
+### Hyperbilirubinemia
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_hyperbili_25.rda"), "out_hyperbili_25")
+load_and_rename(paste0(maindir, "/iso_results/out_hyperbili_50.rda"), "out_hyperbili_50")
+
+hyperbili_table_25 <- generate_iso_table(
+  out_hyperbili_25,
+  model_label = "Hyperbilirubinemia (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/hyperbili_table_25.png")
+)
+
+hyperbili_table_50 <- generate_iso_table(
+  out_hyperbili_50,
+  model_label = "Hyperbilirubinemia (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/hyperbili_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_hyperbili_25.png")
+img2 <- paste0(maindir, "/iso_results/hyperbili_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_hyperbili_50.png")
+img4 <- paste0(maindir, "/iso_results/hyperbili_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_hyperbili_25_trim1.rda"), "out_hyperbili_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_hyperbili_50_trim1.rda"), "out_hyperbili_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_hyperbili_25_trim2.rda"), "out_hyperbili_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_hyperbili_50_trim2.rda"), "out_hyperbili_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_hyperbili_25_trim3.rda"), "out_hyperbili_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_hyperbili_50_trim3.rda"), "out_hyperbili_50_trim3")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_hyperbili_25_trim1, "Hyperbilirubinemia Trim 1 (.25)", paste0(maindir, "/iso_results/hyperbili_table_25_trim1.png"))
+generate_iso_table(out_hyperbili_50_trim1, "Hyperbilirubinemia Trim 1 (.50)", paste0(maindir, "/iso_results/hyperbili_table_50_trim1.png"))
+generate_iso_table(out_hyperbili_25_trim2, "Hyperbilirubinemia Trim 2 (.25)", paste0(maindir, "/iso_results/hyperbili_table_25_trim2.png"))
+generate_iso_table(out_hyperbili_50_trim2, "Hyperbilirubinemia Trim 2 (.50)", paste0(maindir, "/iso_results/hyperbili_table_50_trim2.png"))
+generate_iso_table(out_hyperbili_25_trim3, "Hyperbilirubinemia Trim 3 (.25)", paste0(maindir, "/iso_results/hyperbili_table_25_trim3.png"))
+generate_iso_table(out_hyperbili_50_trim3, "Hyperbilirubinemia Trim 3 (.50)", paste0(maindir, "/iso_results/hyperbili_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_hyperbili_25_trim1.png"),
+  paste0(maindir, "/iso_results/hyperbili_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_hyperbili_50_trim1.png"),
+  paste0(maindir, "/iso_results/hyperbili_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_hyperbili_25_trim2.png"),
+  paste0(maindir, "/iso_results/hyperbili_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_hyperbili_50_trim2.png"),
+  paste0(maindir, "/iso_results/hyperbili_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_hyperbili_25_trim3.png"),
+  paste0(maindir, "/iso_results/hyperbili_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_hyperbili_50_trim3.png"),
+  paste0(maindir, "/iso_results/hyperbili_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+\newpage 
+
+## Maternal Outcomes 
+
+### Maternal Composite Outcome
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_mat_compo_25.rda"), "out_mat_compo_25")
+load_and_rename(paste0(maindir, "/iso_results/out_mat_compo_50.rda"), "out_mat_compo_50")
+
+compo_table_25 <- generate_iso_table(
+  out_mat_compo_25,
+  model_label = "Maternal Composite Outcome (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/mat_compo_table_25.png")
+)
+
+compo_table_50 <- generate_iso_table(
+  out_mat_compo_50,
+  model_label = "Maternal Composite Outcome (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/mat_compo_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_mat_compo_25.png")
+img2 <- paste0(maindir, "/iso_results/mat_compo_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_mat_compo_50.png")
+img4 <- paste0(maindir, "/iso_results/mat_compo_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+-  Maternal composite outcome: Maternal death (during pregnancy or within 1 year postpartum), any life-threatening condition during pregnancy or within 42 days postpartum, severe complications (severe hemorrhage, severe preeclampsia, eclampsia, sepsis/systemic infection, ruptured uterus), or critical interventions (ICU admission, laparotomy including hysterectomy but excluding C-section, or use of blood products).
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_mat_compo_25_trim1.rda"), "out_mat_compo_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_mat_compo_50_trim1.rda"), "out_mat_compo_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_mat_compo_25_trim2.rda"), "out_mat_compo_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_mat_compo_50_trim2.rda"), "out_mat_compo_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_mat_compo_25_trim3.rda"), "out_mat_compo_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_mat_compo_50_trim3.rda"), "out_mat_compo_50_trim3")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_mat_compo_25_trim1, "Maternal Composite Trim 1 (.25)", paste0(maindir, "/iso_results/mat_compo_table_25_trim1.png"))
+generate_iso_table(out_mat_compo_50_trim1, "Maternal Composite Trim 1 (.50)", paste0(maindir, "/iso_results/mat_compo_table_50_trim1.png"))
+generate_iso_table(out_mat_compo_25_trim2, "Maternal Composite Trim 2 (.25)", paste0(maindir, "/iso_results/mat_compo_table_25_trim2.png"))
+generate_iso_table(out_mat_compo_50_trim2, "Maternal Composite Trim 2 (.50)", paste0(maindir, "/iso_results/mat_compo_table_50_trim2.png"))
+generate_iso_table(out_mat_compo_25_trim3, "Maternal Composite Trim 3 (.25)", paste0(maindir, "/iso_results/mat_compo_table_25_trim3.png"))
+generate_iso_table(out_mat_compo_50_trim3, "Maternal Composite Trim 3 (.50)", paste0(maindir, "/iso_results/mat_compo_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_mat_compo_25_trim1.png"),
+  paste0(maindir, "/iso_results/mat_compo_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_mat_compo_50_trim1.png"),
+  paste0(maindir, "/iso_results/mat_compo_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_mat_compo_25_trim2.png"),
+  paste0(maindir, "/iso_results/mat_compo_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_mat_compo_50_trim2.png"),
+  paste0(maindir, "/iso_results/mat_compo_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_mat_compo_25_trim3.png"),
+  paste0(maindir, "/iso_results/mat_compo_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_mat_compo_50_trim3.png"),
+  paste0(maindir, "/iso_results/mat_compo_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+\newpage 
+### Postpartum Hemorrhage (PPH)
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_pph_25.rda"), "out_pph_25")
+load_and_rename(paste0(maindir, "/iso_results/out_pph_50.rda"), "out_pph_50")
+
+pph_table_25 <- generate_iso_table(
+  out_pph_25,
+  model_label = "Postpartum Hemorrhage (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/pph_table_25.png")
+)
+
+pph_table_50 <- generate_iso_table(
+  out_pph_50,
+  model_label = "Postpartum Hemorrhage (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/pph_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_pph_25.png")
+img2 <- paste0(maindir, "/iso_results/pph_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_pph_50.png")
+img4 <- paste0(maindir, "/iso_results/pph_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_pph_25_trim1.rda"), "out_pph_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_pph_50_trim1.rda"), "out_pph_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_pph_25_trim2.rda"), "out_pph_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_pph_50_trim2.rda"), "out_pph_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_pph_25_trim3.rda"), "out_pph_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_pph_50_trim3.rda"), "out_pph_50_trim3")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_pph_25_trim1, "PPH Trim 1 (.25)", paste0(maindir, "/iso_results/pph_table_25_trim1.png"))
+generate_iso_table(out_pph_50_trim1, "PPH Trim 1 (.50)", paste0(maindir, "/iso_results/pph_table_50_trim1.png"))
+generate_iso_table(out_pph_25_trim2, "PPH Trim 2 (.25)", paste0(maindir, "/iso_results/pph_table_25_trim2.png"))
+generate_iso_table(out_pph_50_trim2, "PPH Trim 2 (.50)", paste0(maindir, "/iso_results/pph_table_50_trim2.png"))
+generate_iso_table(out_pph_25_trim3, "PPH Trim 3 (.25)", paste0(maindir, "/iso_results/pph_table_25_trim3.png"))
+generate_iso_table(out_pph_50_trim3, "PPH Trim 3 (.50)", paste0(maindir, "/iso_results/pph_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_pph_25_trim1.png"),
+  paste0(maindir, "/iso_results/pph_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_pph_50_trim1.png"),
+  paste0(maindir, "/iso_results/pph_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_pph_25_trim2.png"),
+  paste0(maindir, "/iso_results/pph_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_pph_50_trim2.png"),
+  paste0(maindir, "/iso_results/pph_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_pph_25_trim3.png"),
+  paste0(maindir, "/iso_results/pph_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_pph_50_trim3.png"),
+  paste0(maindir, "/iso_results/pph_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+\newpage 
+
+### Preeclampsia
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_preclamp_25.rda"), "out_preclamp_25")
+load_and_rename(paste0(maindir, "/iso_results/out_preclamp_50.rda"), "out_preclamp_50")
+
+preclamp_table_25 <- generate_iso_table(
+  out_preclamp_25,
+  model_label = "Preeclampsia (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/preclamp_table_25.png")
+)
+
+preclamp_table_50 <- generate_iso_table(
+  out_preclamp_50,
+  model_label = "Preeclampsia (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/preclamp_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_preclamp_25.png")
+img2 <- paste0(maindir, "/iso_results/preclamp_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_preclamp_50.png")
+img4 <- paste0(maindir, "/iso_results/preclamp_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_preclamp_25_trim1.rda"), "out_preclamp_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_preclamp_50_trim1.rda"), "out_preclamp_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_preclamp_25_trim2.rda"), "out_preclamp_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_preclamp_50_trim2.rda"), "out_preclamp_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_preclamp_25_trim3.rda"), "out_preclamp_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_preclamp_50_trim3.rda"), "out_preclamp_50_trim3")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_preclamp_25_trim1, "Preeclampsia Trim 1 (.25)", paste0(maindir, "/iso_results/preclamp_table_25_trim1.png"))
+generate_iso_table(out_preclamp_50_trim1, "Preeclampsia Trim 1 (.50)", paste0(maindir, "/iso_results/preclamp_table_50_trim1.png"))
+generate_iso_table(out_preclamp_25_trim2, "Preeclampsia Trim 2 (.25)", paste0(maindir, "/iso_results/preclamp_table_25_trim2.png"))
+generate_iso_table(out_preclamp_50_trim2, "Preeclampsia Trim 2 (.50)", paste0(maindir, "/iso_results/preclamp_table_50_trim2.png"))
+generate_iso_table(out_preclamp_25_trim3, "Preeclampsia Trim 3 (.25)", paste0(maindir, "/iso_results/preclamp_table_25_trim3.png"))
+generate_iso_table(out_preclamp_50_trim3, "Preeclampsia Trim 3 (.50)", paste0(maindir, "/iso_results/preclamp_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_preclamp_25_trim1.png"),
+  paste0(maindir, "/iso_results/preclamp_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_preclamp_50_trim1.png"),
+  paste0(maindir, "/iso_results/preclamp_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_preclamp_25_trim2.png"),
+  paste0(maindir, "/iso_results/preclamp_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_preclamp_50_trim2.png"),
+  paste0(maindir, "/iso_results/preclamp_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_preclamp_25_trim3.png"),
+  paste0(maindir, "/iso_results/preclamp_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_preclamp_50_trim3.png"),
+  paste0(maindir, "/iso_results/preclamp_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+\newpage 
+
+### Premature rupture of membranes (PPROM)
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_pprom_25.rda"), "out_pprom_25")
+load_and_rename(paste0(maindir, "/iso_results/out_pprom_50.rda"), "out_pprom_50")
+
+pprom_table_25 <- generate_iso_table(
+  out_pprom_25,
+  model_label = "Premature rupture of membranes (PPROM) (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/pprom_table_25.png")
+)
+
+pprom_table_50 <- generate_iso_table(
+  out_pprom_50,
+  model_label = "Premature rupture of membranes (PPROM) (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/pprom_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_pprom_25.png")
+img2 <- paste0(maindir, "/iso_results/pprom_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_pprom_50.png")
+img4 <- paste0(maindir, "/iso_results/pprom_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_pprom_25_trim1.rda"), "out_pprom_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_pprom_50_trim1.rda"), "out_pprom_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_pprom_25_trim2.rda"), "out_pprom_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_pprom_50_trim2.rda"), "out_pprom_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_pprom_25_trim3.rda"), "out_pprom_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_pprom_50_trim3.rda"), "out_pprom_50_trim3")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_pprom_25_trim1, "PPROM Trim 1 (.25)", paste0(maindir, "/iso_results/pprom_table_25_trim1.png"))
+generate_iso_table(out_pprom_50_trim1, "PPROM Trim 1 (.50)", paste0(maindir, "/iso_results/pprom_table_50_trim1.png"))
+generate_iso_table(out_pprom_25_trim2, "PPROM Trim 2 (.25)", paste0(maindir, "/iso_results/pprom_table_25_trim2.png"))
+generate_iso_table(out_pprom_50_trim2, "PPROM Trim 2 (.50)", paste0(maindir, "/iso_results/pprom_table_50_trim2.png"))
+generate_iso_table(out_pprom_25_trim3, "PPROM Trim 3 (.25)", paste0(maindir, "/iso_results/pprom_table_25_trim3.png"))
+generate_iso_table(out_pprom_50_trim3, "PPROM Trim 3 (.50)", paste0(maindir, "/iso_results/pprom_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_pprom_25_trim1.png"),
+  paste0(maindir, "/iso_results/pprom_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_pprom_50_trim1.png"),
+  paste0(maindir, "/iso_results/pprom_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_pprom_25_trim2.png"),
+  paste0(maindir, "/iso_results/pprom_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_pprom_50_trim2.png"),
+  paste0(maindir, "/iso_results/pprom_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_pprom_25_trim3.png"),
+  paste0(maindir, "/iso_results/pprom_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_pprom_50_trim3.png"),
+  paste0(maindir, "/iso_results/pprom_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+\newpage 
+
+### Postpartum Anemia at 6weeks
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc6_25.rda"), "out_ppa_pnc6_25")
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc6_50.rda"), "out_ppa_pnc6_50")
+
+ppa_pnc6_table_25 <- generate_iso_table(
+  out_ppa_pnc6_25,
+  model_label = "Postpartum Anemia at 6weeks (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/ppa_pnc6_table_25.png")
+)
+
+ppa_pnc6_table_50 <- generate_iso_table(
+  out_ppa_pnc6_50,
+  model_label = "Postpartum Anemia at 6weeks (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/ppa_pnc6_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_ppa_pnc6_25.png")
+img2 <- paste0(maindir, "/iso_results/ppa_pnc6_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_ppa_pnc6_50.png")
+img4 <- paste0(maindir, "/iso_results/ppa_pnc6_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc6_25_trim1.rda"), "out_ppa_pnc6_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc6_50_trim1.rda"), "out_ppa_pnc6_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc6_25_trim2.rda"), "out_ppa_pnc6_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc6_50_trim2.rda"), "out_ppa_pnc6_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc6_25_trim3.rda"), "out_ppa_pnc6_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc6_50_trim3.rda"), "out_ppa_pnc6_50_trim3")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_ppa_pnc6_25_trim1, "PPA 6wks Trim 1 (.25)", paste0(maindir, "/iso_results/ppa_pnc6_table_25_trim1.png"))
+generate_iso_table(out_ppa_pnc6_50_trim1, "PPA 6wks Trim 1 (.50)", paste0(maindir, "/iso_results/ppa_pnc6_table_50_trim1.png"))
+generate_iso_table(out_ppa_pnc6_25_trim2, "PPA 6wks Trim 2 (.25)", paste0(maindir, "/iso_results/ppa_pnc6_table_25_trim2.png"))
+generate_iso_table(out_ppa_pnc6_50_trim2, "PPA 6wks Trim 2 (.50)", paste0(maindir, "/iso_results/ppa_pnc6_table_50_trim2.png"))
+generate_iso_table(out_ppa_pnc6_25_trim3, "PPA 6wks Trim 3 (.25)", paste0(maindir, "/iso_results/ppa_pnc6_table_25_trim3.png"))
+generate_iso_table(out_ppa_pnc6_50_trim3, "PPA 6wks Trim 3 (.50)", paste0(maindir, "/iso_results/ppa_pnc6_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_ppa_pnc6_25_trim1.png"),
+  paste0(maindir, "/iso_results/ppa_pnc6_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_ppa_pnc6_50_trim1.png"),
+  paste0(maindir, "/iso_results/ppa_pnc6_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_ppa_pnc6_25_trim2.png"),
+  paste0(maindir, "/iso_results/ppa_pnc6_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_ppa_pnc6_50_trim2.png"),
+  paste0(maindir, "/iso_results/ppa_pnc6_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_ppa_pnc6_25_trim3.png"),
+  paste0(maindir, "/iso_results/ppa_pnc6_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_ppa_pnc6_50_trim3.png"),
+  paste0(maindir, "/iso_results/ppa_pnc6_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+\newpage 
+
+### Postpartum Anemia at 26weeks
+
+#### All Trimesters
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc26_25.rda"), "out_ppa_pnc26_25")
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc26_50.rda"), "out_ppa_pnc26_50")
+
+ppa_pnc26_table_25 <- generate_iso_table(
+  out_ppa_pnc26_25,
+  model_label = "Postpartum Anemia at 26weeks (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/ppa_pnc26_table_25.png")
+)
+
+ppa_pnc26_table_50 <- generate_iso_table(
+  out_ppa_pnc26_50,
+  model_label = "Postpartum Anemia at 26weeks (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/ppa_pnc26_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_ppa_pnc26_25.png")
+img2 <- paste0(maindir, "/iso_results/ppa_pnc26_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_ppa_pnc26_50.png")
+img4 <- paste0(maindir, "/iso_results/ppa_pnc26_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+
+\newpage 
+
+#### Timepoint Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc26_25_trim1.rda"), "out_ppa_pnc26_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc26_50_trim1.rda"), "out_ppa_pnc26_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc26_25_trim2.rda"), "out_ppa_pnc26_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc26_50_trim2.rda"), "out_ppa_pnc26_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc26_25_trim3.rda"), "out_ppa_pnc26_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc26_50_trim3.rda"), "out_ppa_pnc26_50_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc26_25_pnc6.rda"),
+"out_ppa_pnc26_25_pnc6")
+load_and_rename(paste0(maindir, "/iso_results/out_ppa_pnc26_50_pnc6.rda"), 
+"out_ppa_pnc26_50_pnc6")
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_ppa_pnc26_25_trim1, "PPA 26wks Trim 1 (.25)", paste0(maindir, "/iso_results/ppa_pnc26_table_25_trim1.png"))
+generate_iso_table(out_ppa_pnc26_50_trim1, "PPA 26wks Trim 1 (.50)", paste0(maindir, "/iso_results/ppa_pnc26_table_50_trim1.png"))
+generate_iso_table(out_ppa_pnc26_25_trim2, "PPA 26wks Trim 2 (.25)", paste0(maindir, "/iso_results/ppa_pnc26_table_25_trim2.png"))
+generate_iso_table(out_ppa_pnc26_50_trim2, "PPA 26wks Trim 2 (.50)", paste0(maindir, "/iso_results/ppa_pnc26_table_50_trim2.png"))
+generate_iso_table(out_ppa_pnc26_25_trim3, "PPA 26wks Trim 3 (.25)", paste0(maindir, "/iso_results/ppa_pnc26_table_25_trim3.png"))
+generate_iso_table(out_ppa_pnc26_50_trim3, "PPA 26wks Trim 3 (.50)", paste0(maindir, "/iso_results/ppa_pnc26_table_50_trim3.png"))
+
+generate_iso_table(out_ppa_pnc26_25_pnc6, "PPA 26wks - PNC 6wks (.25)", paste0(maindir, "/iso_results/ppa_pnc26_table_25_pnc6.png"))
+generate_iso_table(out_ppa_pnc26_50_pnc6, "PPA 26wks Trim 3 (.50)", paste0(maindir, "/iso_results/ppa_pnc26_table_50_pnc6.png"))
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_ppa_pnc26_25_trim1.png"),
+  paste0(maindir, "/iso_results/ppa_pnc26_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_ppa_pnc26_50_trim1.png"),
+  paste0(maindir, "/iso_results/ppa_pnc26_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_ppa_pnc26_25_trim2.png"),
+  paste0(maindir, "/iso_results/ppa_pnc26_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_ppa_pnc26_50_trim2.png"),
+  paste0(maindir, "/iso_results/ppa_pnc26_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_ppa_pnc26_25_trim3.png"),
+  paste0(maindir, "/iso_results/ppa_pnc26_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_ppa_pnc26_50_trim3.png"),
+  paste0(maindir, "/iso_results/ppa_pnc26_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+
+# --- PNC6 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_ppa_pnc26_25_pnc6.png"),
+  paste0(maindir, "/iso_results/ppa_pnc26_table_25_pnc6.png"),
+  paste0(maindir, "/iso_results/vioplot_ppa_pnc26_50_pnc6.png"),
+  paste0(maindir, "/iso_results/ppa_pnc26_table_50_pnc6.png"),
+  trimester_label = "PNC 6"
+)
+```
+
+
+\newpage 
+
+### EPDS Score
+
+#### All Trimesters at ANC
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_anc_fat_25.rda"), "out_anc_fat_25")
+load_and_rename(paste0(maindir, "/iso_results/out_anc_fat_50.rda"), "out_anc_fat_50")
+
+anc_fat_table_25 <- generate_iso_table(
+  out_anc_fat_25,
+  model_label = "Fatigue Score at ANC (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/anc_fat_table_25.png")
+)
+
+anc_fat_table_50 <- generate_iso_table(
+  out_anc_fat_50,
+  model_label = "Fatigue Score at ANC (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/anc_fat_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_anc_fat_25.png")
+img2 <- paste0(maindir, "/iso_results/anc_fat_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_anc_fat_50.png")
+img4 <- paste0(maindir, "/iso_results/anc_fat_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+
+\newpage 
+
+#### At 6weeks Postpartum
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_pnc_fat_25_pnc6.rda"), "out_pnc_fat_25_pnc6")
+load_and_rename(paste0(maindir, "/iso_results/out_pnc_fat_50_pnc6.rda"), "out_pnc_fat_50_pnc6")
+
+pnc_fat_table_25_pnc6 <- generate_iso_table(
+  out_pnc_fat_25_pnc6,
+  model_label = "Fatigue Score by Postpartum Hemoglobin (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/pnc_fat_table_25_pnc6.png")
+)
+
+pnc_fat_table_50_pnc6 <- generate_iso_table(
+  out_pnc_fat_50_pnc6,
+  model_label = "Fatigue Score by Postpartum Hemoglobin (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/pnc_fat_table_50_pnc6.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_pnc_fat_25_pnc6.png")
+img2 <- paste0(maindir, "/iso_results/pnc_fat_table_25_pnc6.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_pnc_fat_50_pnc6.png")
+img4 <- paste0(maindir, "/iso_results/pnc_fat_table_50_pnc6.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing  hemoglobin values taken within six weeks postpartum visit, Y axis is showing the postpartum fatigue score.
+
+
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+# load_and_rename(paste0(maindir, "/iso_results/out_anc_fat_25_trim1.rda"), "out_anc_fat_25_trim1")
+# load_and_rename(paste0(maindir, "/iso_results/out_anc_fat_50_trim1.rda"), "out_anc_fat_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_anc_fat_25_trim2.rda"), "out_anc_fat_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_anc_fat_50_trim2.rda"), "out_anc_fat_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_anc_fat_25_trim3.rda"), "out_anc_fat_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_anc_fat_50_trim3.rda"), "out_anc_fat_50_trim3")
+
+# Generate and save the iso tables as PNGs
+# generate_iso_table(out_anc_fat_25_trim1, "Severely Fatigued at ANC Trim 1 (.25)", paste0(maindir, "/iso_results/anc_fat_table_25_trim1.png"))
+# generate_iso_table(out_anc_fat_50_trim1, "Severely Fatigued at ANC Trim 1 (.50)", paste0(maindir, "/iso_results/anc_fat_table_50_trim1.png"))
+generate_iso_table(out_anc_fat_25_trim2, "Severely Fatigued at ANC Trim 2 (.25)", paste0(maindir, "/iso_results/anc_fat_table_25_trim2.png"))
+generate_iso_table(out_anc_fat_50_trim2, "Severely Fatigued at ANC Trim 2 (.50)", paste0(maindir, "/iso_results/anc_fat_table_50_trim2.png"))
+generate_iso_table(out_anc_fat_25_trim3, "Severely Fatigued at ANC Trim 3 (.25)", paste0(maindir, "/iso_results/anc_fat_table_25_trim3.png"))
+generate_iso_table(out_anc_fat_50_trim3, "Severely Fatigued at ANC Trim 3 (.50)", paste0(maindir, "/iso_results/anc_fat_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+# plot_vioplot_table_pair(
+#   paste0(maindir, "/iso_results/vioplot_anc_fat_25_trim1.png"),
+#   paste0(maindir, "/iso_results/anc_fat_table_25_trim1.png"),
+#   paste0(maindir, "/iso_results/vioplot_anc_fat_50_trim1.png"),
+#   paste0(maindir, "/iso_results/anc_fat_table_50_trim1.png"),
+#   trimester_label = "Trimester 1"
+# )
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_anc_fat_25_trim2.png"),
+  paste0(maindir, "/iso_results/anc_fat_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_anc_fat_50_trim2.png"),
+  paste0(maindir, "/iso_results/anc_fat_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_anc_fat_25_trim3.png"),
+  paste0(maindir, "/iso_results/anc_fat_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_anc_fat_50_trim3.png"),
+  paste0(maindir, "/iso_results/anc_fat_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+
+\newpage 
+
+### Depression
+
+#### All Trimesters at ANC
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_anc_dpr_25.rda"), "out_anc_dpr_25")
+load_and_rename(paste0(maindir, "/iso_results/out_anc_dpr_50.rda"), "out_anc_dpr_50")
+
+anc_dpr_table_25 <- generate_iso_table(
+  out_anc_dpr_25,
+  model_label = "Depression at ANC (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/anc_dpr_table_25.png")
+)
+
+anc_dpr_table_50 <- generate_iso_table(
+  out_anc_dpr_50,
+  model_label = "Depression at ANC (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/anc_dpr_table_50.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_anc_dpr_25.png")
+img2 <- paste0(maindir, "/iso_results/anc_dpr_table_25.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_anc_dpr_50.png")
+img4 <- paste0(maindir, "/iso_results/anc_dpr_table_50.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+
+
+
+#### At 6weeks Postpaturm 
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+library(png)
+# Load objects and generate tables (saved as PNG)
+load_and_rename(paste0(maindir, "/iso_results/out_pnc_dpr_25_pnc6.rda"), "out_pnc_dpr_25_pnc6")
+load_and_rename(paste0(maindir, "/iso_results/out_pnc_dpr_50_pnc6.rda"), "out_pnc_dpr_50_pnc6")
+
+pnc_dpr_table_25_pnc6 <- generate_iso_table(
+  out_pnc_dpr_25_pnc6,
+  model_label = "Depression Score At PNC: 6-Week PP Hb (.25 Model)",
+  save_path = paste0(maindir, "/iso_results/pnc_dpr_table_25_pnc6.png")
+)
+
+pnc_dpr_table_50_pnc6 <- generate_iso_table(
+  out_pnc_dpr_50_pnc6,
+  model_label = "Depression Score At PNC: 6-Week PP Hb (.50 Model)",
+  save_path = paste0(maindir, "/iso_results/pnc_dpr_table_50_pnc6.png")
+)
+
+# Paths to all 4 images
+img1 <- paste0(maindir, "/iso_results/vioplot_pnc_dpr_25_pnc6.png")
+img2 <- paste0(maindir, "/iso_results/pnc_dpr_table_25_pnc6.png")
+img3 <- paste0(maindir, "/iso_results/vioplot_pnc_dpr_50_pnc6.png")
+img4 <- paste0(maindir, "/iso_results/pnc_dpr_table_50_pnc6.png")
+
+
+# Layout: 2 columns, 2 rows with 3:1 height ratio
+layout_matrix <- matrix(c(1, 2, 3, 4), nrow = 2, ncol = 2, byrow = TRUE)
+layout(mat = layout_matrix, heights = c(2.5, 1))
+par(mar = c(0, 0, 0, 0), xpd = NA)
+
+# Function to draw PNG images cleanly
+plot_image <- function(path) {
+  img <- readPNG(path)
+  plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(0, 1), ylim = c(0, 1))
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+# Draw the 4 panels
+plot_image(img1)  # Vioplot .25
+plot_image(img3)  # Vioplot .50
+plot_image(img2)  # Table .25
+plot_image(img4)  # Table .50
+
+```
+
+-   X axis is showing the extreme value of hemoglobin through all visits before event or within each trimester, Y axis is showing the risk of event.
+\newpage 
+
+#### Trimester Specific
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Load outputs for trim 1–3
+load_and_rename(paste0(maindir, "/iso_results/out_anc_dpr_25_trim1.rda"), "out_anc_dpr_25_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_anc_dpr_50_trim1.rda"), "out_anc_dpr_50_trim1")
+load_and_rename(paste0(maindir, "/iso_results/out_anc_dpr_25_trim2.rda"), "out_anc_dpr_25_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_anc_dpr_50_trim2.rda"), "out_anc_dpr_50_trim2")
+load_and_rename(paste0(maindir, "/iso_results/out_anc_dpr_25_trim3.rda"), "out_anc_dpr_25_trim3")
+load_and_rename(paste0(maindir, "/iso_results/out_anc_dpr_50_trim3.rda"), "out_anc_dpr_50_trim3")
+
+# Generate and save the iso tables as PNGs
+generate_iso_table(out_anc_dpr_25_trim1, "Depression at ANC Trim 1 (.25)", paste0(maindir, "/iso_results/anc_dpr_table_25_trim1.png"))
+generate_iso_table(out_anc_dpr_50_trim1, "Depression at ANC Trim 1 (.50)", paste0(maindir, "/iso_results/anc_dpr_table_50_trim1.png"))
+generate_iso_table(out_anc_dpr_25_trim2, "Depression at ANC Trim 2 (.25)", paste0(maindir, "/iso_results/anc_dpr_table_25_trim2.png"))
+generate_iso_table(out_anc_dpr_50_trim2, "Depression at ANC Trim 2 (.50)", paste0(maindir, "/iso_results/anc_dpr_table_50_trim2.png"))
+generate_iso_table(out_anc_dpr_25_trim3, "Depression at ANC Trim 3 (.25)", paste0(maindir, "/iso_results/anc_dpr_table_25_trim3.png"))
+generate_iso_table(out_anc_dpr_50_trim3, "Depression at ANC Trim 3 (.50)", paste0(maindir, "/iso_results/anc_dpr_table_50_trim3.png"))
+
+```
+
+```{r, echo=FALSE, out.width="105%", fig.width=11, fig.height=8}
+
+# --- Trim 1 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_anc_dpr_25_trim1.png"),
+  paste0(maindir, "/iso_results/anc_dpr_table_25_trim1.png"),
+  paste0(maindir, "/iso_results/vioplot_anc_dpr_50_trim1.png"),
+  paste0(maindir, "/iso_results/anc_dpr_table_50_trim1.png"),
+  trimester_label = "Trimester 1"
+)
+
+# --- Trim 2 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_anc_dpr_25_trim2.png"),
+  paste0(maindir, "/iso_results/anc_dpr_table_25_trim2.png"),
+  paste0(maindir, "/iso_results/vioplot_anc_dpr_50_trim2.png"),
+  paste0(maindir, "/iso_results/anc_dpr_table_50_trim2.png"),
+  trimester_label = "Trimester 2"
+)
+
+# --- Trim 3 ---
+plot_vioplot_table_pair(
+  paste0(maindir, "/iso_results/vioplot_anc_dpr_25_trim3.png"),
+  paste0(maindir, "/iso_results/anc_dpr_table_25_trim3.png"),
+  paste0(maindir, "/iso_results/vioplot_anc_dpr_50_trim3.png"),
+  paste0(maindir, "/iso_results/anc_dpr_table_50_trim3.png"),
+  trimester_label = "Trimester 3"
+)
+
+```
+
+<!-- # Heatmap of Hemoglobin Thresholds for Maternal and Infant Outcomes by Ranked Risks -->
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+
+suppressPackageStartupMessages({
+  library(dplyr); library(stringr); library(purrr); library(tidyr)
+})
+
+#All General Codes ----
+# 1. Parse the exact label formats produced by outdata() ----
+parse_iso_label <- function(label, hb_min = 5, hb_max = 18, eps = 1e-6) {
+  if (length(label) == 0 || is.na(label) || !nzchar(label)) {
+    return(tibble(lower = NA_real_, upper = NA_real_))
+  }
+  
+  # Convert to string and normalize
+  lab <- as.character(label) |>
+    stringi::stri_trim_both() |>
+    stringi::stri_replace_all_regex("[\\p{Z}\\s]+", " ") |>  # Normalize spaces
+    stringi::stri_replace_all_regex("[–—]", "-")              # Normalize dashes
+  
+  # Define patterns (using explicit Unicode in regex)
+  patterns <- list(
+    # Pattern 1: "≤ b" or "<= b"
+    list(
+      regex = "^[\\u2264<=]\\s*(-?\\d+(?:\\.\\d+)?)$",
+      handler = function(m) tibble(lower = hb_min, upper = as.numeric(m[,2]))
+    ),
+    # Pattern 2: "> a"
+    list(
+      regex = "^>\\s*(-?\\d+(?:\\.\\d+)?)$",
+      handler = function(m) tibble(lower = as.numeric(m[,2]) + eps, upper = hb_max)
+    ),
+    # Pattern 3: "≥ a" or ">= a"
+    list(
+      regex = "^[\\u2265>=]\\s*(-?\\d+(?:\\.\\d+)?)$",
+      handler = function(m) tibble(lower = as.numeric(m[,2]), upper = hb_max)
+    ),
+    # Pattern 4: "> a - ≤ b"
+    list(
+      regex = "^>\\s*(-?\\d+(?:\\.\\d+)?)\\s*-\\s*[\\u2264<=]\\s*(-?\\d+(?:\\.\\d+)?)$",
+      handler = function(m) tibble(lower = as.numeric(m[,2]) + eps, upper = as.numeric(m[,3]))
+    ),
+    # Pattern 5: "≥ a - ≤ b"
+    list(
+      regex = "^[\\u2265>=]\\s*(-?\\d+(?:\\.\\d+)?)\\s*-\\s*[\\u2264<=]\\s*(-?\\d+(?:\\.\\d+)?)$",
+      handler = function(m) tibble(lower = as.numeric(m[,2]), upper = as.numeric(m[,3]))
+    ),
+    # Pattern 6: "All values"
+    list(
+      regex = "^all\\s*values?$",
+      handler = function(m) tibble(lower = hb_min, upper = hb_max),
+      ignore_case = TRUE
+    )
+  )
+  
+  # Try each pattern
+  for (p in patterns) {
+    opts <- if (isTRUE(p$ignore_case)) stringi::stri_opts_regex(case_insensitive = TRUE) else NULL
+    if (stringi::stri_detect_regex(lab, p$regex, opts_regex = opts)) {
+      m <- stringi::stri_match_first_regex(lab, p$regex, opts_regex = opts)
+      return(p$handler(m))
+    }
+  }
+  
+  warning("Unrecognized label format: '", lab, "'")
+  tibble(lower = NA_real_, upper = NA_real_)
+}
+
+# 2. Tidy one outdata() row -> interval rows (no guessing, no summarizing) ----
+tidy_outdata_iso <- function(out_df, hb_min = 5, hb_max = 18, eps = 1e-6) {
+  # First find threshold columns
+  thres_cols <- grep("^Thres\\d+$", names(out_df), value = TRUE)
+  if (!length(thres_cols)) stop("No Thres<i> columns found.")
+  
+  # Order them numerically
+  thres_cols <- thres_cols[order(as.integer(str_extract(thres_cols, "\\d+")))]
+  
+  outcome <- out_df$Outcome[1]
+  
+  map_dfr(thres_cols, function(col) {
+    i <- as.integer(str_extract(col, "\\d+"))
+    parsed <- parse_iso_label(out_df[[col]], hb_min, hb_max, eps)
+    parsed |>
+      mutate(
+        Outcome = outcome,
+        group   = i,
+        risk    = as.numeric(out_df[[paste0("Risk/Mscore", i)]]),
+        n       = as.numeric(out_df[[paste0("N", i)]])
+      ) |>
+      relocate(Outcome, group, lower, upper, risk, n)
+  })
+}
+
+
+# 3.Interval creation from environment ----
+collect_intervals_from_env <- function(
+    which = c("All","Trim1","Trim2","Trim3","Pp6wks"),
+    where = .GlobalEnv,
+    hb_min = 5, hb_max = 18, eps = 1e-6,
+    pattern = NULL,                 # optional: override regex manually
+    assign_intermediates = TRUE
+) {
+  which <- match.arg(which)
+  
+  # Build an anchored, case-insensitive pattern if not provided
+  if (is.null(pattern)) {
+    base <- "(?i)^out.*_50"
+    suffix <- switch(which,
+                     "All"   = "$",
+                     "Trim1" = "_?trim1$",
+                     "Trim2" = "_?trim2$",
+                     "Trim3" = "_?trim3$",
+                     "Pp6wks" = "_?pnc6$",
+    )
+    pattern <- paste0(base, suffix)
+  }
+  
+  # Find matching objects
+  objs  <- ls(envir = where, all.names = TRUE)
+  picks <- grep(pattern, objs, value = TRUE, perl = TRUE)
+  if (!length(picks)) stop("No objects matched pattern: ", pattern)
+  
+  outs <- mget(picks, envir = where, inherits = FALSE)
+  
+  # Keep only data.frames that look like outdata() results
+  dfs  <- outs[vapply(outs, is.data.frame, logical(1))]
+  dfs  <- dfs[vapply(dfs, function(x) any(grepl("^Thres\\d+$", names(x))), logical(1))]
+  if (!length(dfs)) stop("Matched objects, but none look like outdata() frames for: ", which)
+  
+  # Tidy each and optionally expose intermediates
+  intermediate_dfs <- lapply(dfs, tidy_outdata_iso, hb_min = hb_min, hb_max = hb_max, eps = eps)
+  if (isTRUE(assign_intermediates)) {
+    list2env(setNames(intermediate_dfs, paste0("intermediate_", names(intermediate_dfs))), envir = where)
+  }
+  
+  dplyr::bind_rows(intermediate_dfs)
+}
+
+#4. Expand to grid ----
+expand_to_grid <- function(intervals, hb_seq = seq(5, 18, by = 0.5)) {
+  by_outcome <- split(intervals, intervals$Outcome)
+  bind_rows(lapply(names(by_outcome), function(outc) {
+    intv <- arrange(by_outcome[[outc]], lower, upper, group)
+    idx <- vapply(hb_seq, function(hb) {
+      hit <- which(!is.na(intv$lower) & !is.na(intv$upper) &
+                     hb >= intv$lower & hb <= intv$upper)
+      if (length(hit)) hit[1] else NA_integer_
+    }, integer(1))
+    tibble(Outcome = outc, hb = hb_seq, risk = ifelse(is.na(idx), NA_real_, intv$risk[idx]))
+  }))
+}
+
+# 5. Risk Plot Function ----
+# --- groups (COMPO in Infant) ---
+maternal_outcomes <- c(
+  	
+"MAT COMPO","PRECLAMP","PPROM","PPH","PPA PNC6","PPA PNC26",
+  "FATIGUE PNC","FATIGUE ANC","DPR PNC","DPR ANC"
+)
+infant_outcomes <- c(
+  "STILLBIRTH 28WKS","STILLBIRTH 20WKS","SGA3","SGA10","NEONATAL MORTALITY","PSBI",
+  "PRETERM 37WKS","PRETERM 34WKS","LBW<2500g","LBW<1500g",
+  "HYPERBILIRUBINEMIA","COMPO"
+)
+
+plot_risk_heatmap <- function(grid_df,
+                              trimester = NULL,
+                              title = NULL,
+                              show_values = FALSE,
+                              risk_digits = 2,
+                              group_order = c("Reference","Maternal","Infant"),
+                              drop_mono_risk = TRUE,
+                              drop_single_threshold = TRUE,
+                              non_mono_last = TRUE,
+                              add_reference_rows = TRUE,
+                              reference_group = "Reference") {
+  
+  # grid_df = hb_grid
+  # trimester = "All"
+  # title = NULL
+  # show_values = FALSE
+  # risk_digits = 2
+  # group_order = c("Reference","Maternal","Infant")
+  # drop_mono_risk = TRUE
+  # drop_single_threshold = TRUE
+  # non_mono_last = TRUE
+  # add_reference_rows = TRUE
+  # reference_group = "Reference"
+  
+  
+  stopifnot(all(c("Outcome","hb","risk") %in% names(grid_df)))
+  suppressPackageStartupMessages({
+    library(dplyr); library(ggplot2); library(forcats); library(stringr); library(tidyr); library(tibble)
+  })
+  
+  
+  mono_grey <- "#bfbfbf"
+  
+  # --- parse trimester + clean base outcome name ---
+  df0 <- grid_df %>%
+    mutate(
+      Trimester = str_match(Outcome, "Trim\\s*(\\d)")[,2],
+      Trimester = dplyr::recode(Trimester, `1`="Trim1", `2`="Trim2", `3`="Trim3",`6`="Pp6wks", .default = "All"),
+      Outcome_base = Outcome %>%
+        str_replace("\\s*\\(\\s*\\.50\\s*(,\\s*Trim\\s*[123])?\\s*\\)\\s*$", "") %>%
+        str_squish()
+    )
+  
+  # --- build the dataset for the requested trimester ---
+  df_trim <- df0 
+  df <- df_trim %>%
+    mutate(Outcome_clean = Outcome_base,
+           Group = case_when(
+             Outcome_clean %in% maternal_outcomes ~ "Maternal",
+             Outcome_clean %in% infant_outcomes   ~ "Infant",
+             TRUE ~ NA
+           )) %>%
+    select(Outcome_clean, Group, Trimester, hb, risk, dplyr::any_of("group"))
+  # threshold-count for this trimester only
+  thresh_tbl <- df_trim %>%
+    group_by(Outcome_base) %>%
+    summarise(n_thresh = if ("group" %in% names(df_trim)) n_distinct(group[!is.na(group)]) else NA_integer_,
+              .groups = "drop")
+  df <- df %>% left_join(thresh_tbl, by = c("Outcome_clean" = "Outcome_base"))
+  
+  # if nothing in this trimester (e.g., no Trim2 data), stop gracefully unless reference rows requested
+  if (nrow(df) == 0 && !add_reference_rows) stop(paste("No data for", trimester))
+  
+  # --- ranking + display formatting ---
+  # if (nrow(df) > 0) {
+  #   df <- df %>%
+  #     mutate(
+  #       risk_key = ifelse(is.na(risk), NA_real_, round(risk, risk_digits)),
+  #       risk_fmt = ifelse(is.na(risk), "", sprintf(paste0("%.", risk_digits, "f"), risk))
+  #     )
+  # 
+  #   # per-outcome rank classes
+  #   stats <- df %>%
+  #     group_by(Outcome_clean) %>%
+  #     summarise(
+  #       all_na   = all(is.na(risk_key)),
+  #       nuniq    = n_distinct(risk_key, na.rm = TRUE),
+  #       rmin_key = if (all_na) NA_real_ else min(risk_key, na.rm = TRUE),
+  #       rmax_key = if (all_na) NA_real_ else max(risk_key, na.rm = TRUE),
+  #       .groups = "drop"
+  #     )
+  #   df <- df %>% left_join(stats, by = "Outcome_clean")
+  # 
+  #   # optional drops
+  #   df <- df %>%
+  #     group_by(Outcome_clean) %>%
+  #     filter(
+  #       !all_na,
+  #       !(isTRUE(drop_mono_risk)        & nuniq <= 1),
+  #       !(isTRUE(drop_single_threshold) & !is.na(n_thresh) & n_thresh <= 1)
+  #     ) %>%
+  #     ungroup()
+  # 
+  #   # label category
+  #   if (nrow(df) > 0) {
+  #     df <- df %>%
+  #       mutate(
+  #         is_max = !is.na(risk_key) & risk_key >= rmax_key,
+  #         is_min = !is.na(risk_key) & risk_key <= rmin_key,
+  #         fill_cat = case_when(
+  #           is_max ~ "High",
+  #           is_min ~ "Low",
+  #           TRUE   ~ "Medium"
+  #         ),
+  #         fill_cat = factor(fill_cat, levels = c("High","Medium","Low"))
+  #       )
+  #   }
+  # }
+  if (nrow(df) > 0) {
+    df <- df %>%
+      mutate(
+        risk_key = ifelse(is.na(risk), NA_real_, round(risk, risk_digits)),
+        risk_fmt = ifelse(is.na(risk), "", sprintf(paste0("%.", risk_digits, "f"), risk))
+      )
+    
+    # per-outcome stats
+    stats <- df %>%
+      group_by(Outcome_clean) %>%
+      summarise(
+        all_na   = all(is.na(risk_key)),
+        nuniq    = n_distinct(risk_key, na.rm = TRUE),
+        rmin_key = if (all_na) NA_real_ else min(risk_key, na.rm = TRUE),
+        rmax_key = if (all_na) NA_real_ else max(risk_key, na.rm = TRUE),
+        .groups = "drop"
+      )
+    df <- df %>% left_join(stats, by = "Outcome_clean")
+    
+    # optional drops
+    df <- df %>%
+      group_by(Outcome_clean) %>%
+      filter(
+        !all_na,
+        !(isTRUE(drop_mono_risk)        & nuniq <= 1),
+        !(isTRUE(drop_single_threshold) & !is.na(n_thresh) & n_thresh <= 1)
+      ) %>%
+      ungroup()
+    
+    if (nrow(df) > 0) {
+      # Tail boundaries and near-max threshold
+      low_tail_cut   <- 8     # hb < 8 considered "low tail"
+      high_tail_cut  <- 13    # hb >= 13 considered "high tail"
+      near_max_frac  <- 0.90  # ≥ 90% of per-outcome max
+      
+      df <- df %>%
+        group_by(Outcome_clean) %>%
+        mutate(
+          is_global_min = !is.na(risk_key) & risk_key == rmin_key,
+          is_global_max = !is.na(risk_key) & risk_key == rmax_key,
+          in_low_tail   = hb <  low_tail_cut,
+          in_high_tail  = hb >= high_tail_cut,
+          
+          # Near-max in tails only if we have >=3 unique risks
+          is_near_max_tail = nuniq >= 3 &
+            !is.na(risk_key) &
+            risk_key >= near_max_frac * rmax_key &
+            (in_low_tail | in_high_tail)
+        ) %>%
+        ungroup() %>%
+        mutate(
+          # IMPORTANT: global min stays green even if it meets the near-max test
+          fill_cat = case_when(
+            is_global_min                          ~ "Low",
+            is_global_max | is_near_max_tail       ~ "High",
+            TRUE                                   ~ "Medium"
+          ),
+          fill_cat = factor(fill_cat, levels = c("High","Medium","Low"))
+        )
+    }
+  }
+  
+  
+  # --- reference rows (WHO, HEALTHY) for this trimester plot ---
+  if (isTRUE(add_reference_rows)) {
+    hb_vals <- if (nrow(grid_df)) sort(unique(grid_df$hb)) else seq(5, 18, by = 0.5)
+    
+    # Which set of cuts to use
+    trim_key <- if (trimester %in% c("Trim1","Trim2","Trim3")) trimester else "All"
+    
+    #EDIT THESE DUMMY CUTS 
+    # WHO: <= low -> High; (low, mid] -> Medium; > mid -> Low
+    who_cuts <- list(
+      All   = c(low = 7.0, mid = 11.0),
+      Trim1 = c(low = 7.0, mid = 11.0),
+      Trim2 = c(low = 7.0, mid = 10.5),
+      Trim3 = c(low = 7.0, mid = 11.0)
+    )
+    
+    # Healthy Cohort:
+    # < h1 -> High; [h1, h2) -> Medium; [h2, h3] -> Low; > h3 -> High
+    healthy_cuts <- list(
+      All   = c(h1 = 6.02, h2 = 8.61, h3 = 12.60),
+      Trim1 = c(h1 = 8.95, h2 = 9.32, h3 = 13.5),
+      Trim2 = c(h1 = 8.37, h2 = 8.73, h3 = 13.0),
+      Trim3 = c(h1 = 8.11, h2 = 8.5, h3 = 13)
+    )
+    
+    # Helpers to turn cuts into "High/Medium/Low" fills
+    fill_who <- function(x, cuts) dplyr::case_when(
+      x <= cuts["low"] ~ "High",
+      x <= cuts["mid"] ~ "Medium",
+      TRUE             ~ "Low"
+    )
+    fill_healthy <- function(x, cuts) dplyr::case_when(
+      x <  cuts["h1"] ~ "High",
+      x <  cuts["h2"] ~ "Medium",
+      x <= cuts["h3"] ~ "Low",
+      TRUE            ~ "High"
+    )
+    
+    who_fill     <- fill_who(hb_vals,     who_cuts[[trim_key]])
+    healthy_fill <- fill_healthy(hb_vals, healthy_cuts[[trim_key]])
+    
+    ref_df <- dplyr::bind_rows(
+      tibble::tibble(
+        Outcome_clean = "WHO Guideline",
+        Group         = reference_group,
+        Trimester     = trimester,
+        hb            = hb_vals,
+        risk_key      = NA_real_,
+        risk_fmt      = "",
+        fill_cat      = factor(who_fill, levels = c("High","Medium","Low"))
+      ),
+      tibble::tibble(
+        Outcome_clean = "Healthy Cohort",
+        Group         = reference_group,
+        Trimester     = trimester,
+        hb            = hb_vals,
+        risk_key      = NA_real_,
+        risk_fmt      = "",
+        fill_cat      = factor(healthy_fill, levels = c("High","Medium","Low"))
+      )
+    )
+    
+    # combine (allow empty df on the left)
+    if (nrow(df) == 0) {
+      df <- ref_df
+    } else {
+      keep <- intersect(names(df), names(ref_df))
+      df   <- dplyr::bind_rows(df[, keep], ref_df[, keep])
+    }
+    
+  }
+  
+  if (is.null(title)) {
+    title <- switch(trimester,
+                    "Trim1" = "Heatmap of Hb Threshold Risk Rank — Trimester 1",
+                    "Trim2" = "Heatmap of Hb Threshold Risk Rank — Trimester 2",
+                    "Trim3" = "Heatmap of Hb Threshold Risk Rank — Trimester 3",
+                    "Pp6wks" = "Heatmap of Hb Threshold Risk Rank — PostPartum 6wks",
+                    "All"   = "Heatmap of Hb Threshold Risk Rank — All Trimesters")
+  }
+  
+  # facet order & row order
+  df$Group <- fct_relevel(df$Group, group_order)
+  ref_order <- c("WHO Guideline","Healthy Cohort")
+  row_order <- df %>%
+    distinct(Group, Outcome_clean) %>%
+    arrange(
+      factor(Group, levels = group_order),
+      dplyr::case_when(
+        Group == reference_group & Outcome_clean %in% ref_order ~ match(Outcome_clean, ref_order),
+        TRUE ~ Inf
+      ),
+      Outcome_clean
+    )
+  df <- df %>% mutate(Outcome_label = factor(Outcome_clean, levels = row_order$Outcome_clean))
+  
+  # plot
+  risk_colors <- c("High"="#e74c3c","Medium"="#f1c40f","Low"="#2ecc71")
+  
+  g <- ggplot(df, aes(x = hb, y = Outcome_label, fill = fill_cat)) +
+    geom_tile(height = 1, width = 0.5, colour = mono_grey, linewidth = 0.25) +
+    scale_fill_manual(values = risk_colors,
+                      name = "Risk Rank",
+                      na.value = "grey90") +
+    { if (isTRUE(show_values)) geom_text(aes(label = risk_fmt), size = 3) else NULL } +
+    scale_x_continuous(breaks = seq(5, 18, by = 1), expand = c(0,0)) +
+    facet_grid(Group ~ ., scales = "free_y", space = "free_y") +
+    labs(x = "Hemoglobin (g/dL)", y = NULL, title = title) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid = element_blank(),
+      legend.position = "right",
+      strip.text.y = element_text(face = "bold"),
+      axis.text.y = element_text(size = 8, hjust = 1, margin = margin(r = 6)),
+      axis.text.x = element_text(size = 8),
+      axis.title  = element_text(size = 9),
+      plot.title  = element_text(size = 10, hjust = 0),
+      legend.text = element_text(size = 7),
+      legend.title= element_text(size = 8),
+      legend.key.width  = grid::unit(1, "cm"),
+      legend.key.height = grid::unit(0.3, "cm")
+    )
+  g
+}
+
+
+#All trimesters
+# List all .rda files 
+
+base_dir <- paste0("D:/Users/williams_pj/Documents/Analysis/ReMAPP/Aim2/", UploadDate, "/iso_results" )
+
+load_as_filename <- function(path, envir = .GlobalEnv, overwrite = TRUE) {
+  # target name = file name without extension
+  target <- tools::file_path_sans_ext(basename(path))
+  target <- make.names(target)  # ensure a valid R name
+  
+  # load into a temp env so we don't leak internal names like "out"
+  tmp <- new.env(parent = emptyenv())
+  objs <- load(path, envir = tmp)
+  
+  if (!overwrite && exists(target, envir = envir)) {
+    warning("Object '", target, "' already exists; skipping: ", path)
+    return(invisible(target))
+  }
+  
+  # If exactly one object, use it. If multiple, prefer the one that looks like your outdata() frame.
+  pick <- objs
+  if (length(objs) > 1) {
+    looks_out <- vapply(objs, function(nm) {
+      x <- get(nm, envir = tmp)
+      is.data.frame(x) && any(grepl("^Thres\\d+$", names(x)))
+    }, logical(1))
+    if (sum(looks_out) == 1) pick <- objs[which(looks_out)]
+  } else if (length(objs) == 0) {
+    stop("No objects inside: ", path)
+  }
+  
+  assign(target, get(pick[1], envir = tmp), envir = envir)
+  invisible(target)
+}
+
+files_all <- list.files(base_dir,
+                        pattern = "^out.*_50\\.(rda|RData)$",
+                        full.names = TRUE, ignore.case = TRUE, recursive = TRUE
+)
+files_t1 <- list.files(base_dir,
+                       pattern = "^out.*_50_?trim1\\.(rda|RData)$",
+                       full.names = TRUE, ignore.case = TRUE, recursive = TRUE
+)
+files_t2 <- list.files(base_dir,
+                       pattern = "^out.*_50_?trim2\\.(rda|RData)$",
+                       full.names = TRUE, ignore.case = TRUE, recursive = TRUE
+)
+files_t3 <- list.files(base_dir,
+                       pattern = "^out.*_50_?trim3\\.(rda|RData)$",
+                       full.names = TRUE, ignore.case = TRUE, recursive = TRUE
+)
+
+files_p6 <- list.files(base_dir,
+                       pattern = "^out.*_50_?pnc6\\.(rda|RData)$",
+                       full.names = TRUE, ignore.case = TRUE, recursive = TRUE
+)
+# Load each file so the object in R is named exactly like the file (sans extension)
+invisible(lapply(files_all, load_as_filename))
+invisible(lapply(files_t1,  load_as_filename))
+invisible(lapply(files_t2,  load_as_filename))
+invisible(lapply(files_t3,  load_as_filename))
+invisible(lapply(files_p6,  load_as_filename))
+
+#Create all Interval Datasets ----
+intervals        <- collect_intervals_from_env("All")
+intervals_trim1  <- collect_intervals_from_env("Trim1")
+intervals_trim2  <- collect_intervals_from_env("Trim2")
+intervals_trim3  <- collect_intervals_from_env("Trim3")
+intervals_pnc6  <- collect_intervals_from_env("Pp6wks")
+
+#Make Hb Grid Combined Datasets for All Trimesters ----
+hb_grid   <- expand_to_grid(intervals,        hb_seq = seq(5, 18, by = 0.5))
+hb_grid_t1 <- expand_to_grid(intervals_trim1,  hb_seq = seq(5, 18, by = 0.5))
+hb_grid_t2 <- expand_to_grid(intervals_trim2,  hb_seq = seq(5, 18, by = 0.5))
+hb_grid_t3 <- expand_to_grid(intervals_trim3,  hb_seq = seq(5, 18, by = 0.5))
+hb_grid_p6 <- expand_to_grid(intervals_pnc6,  hb_seq = seq(5, 18, by = 0.5))
+
+#Plot all Plots By Trimester ----
+p_all <- plot_risk_heatmap(hb_grid,   trimester = "All")
+p_t1  <- plot_risk_heatmap(hb_grid_t1, trimester = "Trim1")
+p_t2  <- plot_risk_heatmap(hb_grid_t2, trimester = "Trim2")
+p_t3  <- plot_risk_heatmap(hb_grid_t3, trimester = "Trim3")
+p_p6  <- plot_risk_heatmap(hb_grid_p6, trimester = "Pp6wks")
+
+```
+
+<!-- ### All Trimesters Heatmap of Hemoglobin Thresholds -->
+<!-- ```{r, out.width='100%', echo=FALSE, include=TRUE} -->
+<!-- print(p_all) -->
+<!-- ``` -->
+<!-- ### Trimester 1 Heatmap of Hemoglobin Thresholds  -->
+<!-- ```{r, out.width='100%', echo=FALSE, include=TRUE} -->
+<!-- print(p_t1) -->
+<!-- ``` -->
+<!-- ### Trimester 2 Heatmap of Hemoglobin Thresholds  -->
+<!-- ```{r, out.width='100%', echo=FALSE, include=TRUE} -->
+<!-- print(p_t2) -->
+<!-- ``` -->
+<!-- ### Trimester 3 Heatmap of Hemoglobin Thresholds  -->
+<!-- ```{r, out.width='100%', echo=FALSE, include=TRUE} -->
+<!-- print(p_t3) -->
+<!-- ``` -->
+
+<!-- ### Postpartum 6weeks Heatmap of Hemoglobin Thresholds  -->
+<!-- ```{r, out.width='100%', echo=FALSE, include=TRUE} -->
+<!-- print(p_p6) -->
+<!-- ``` -->
+
+\newpage
+## Combined Plots For Maternal and Infant Incomes (Using .5 Isotonic Regression Model) 
+
+```{r, out.width='80%', fig.align='center', echo=FALSE, message=FALSE, warning=FALSE}
+
+suppressPackageStartupMessages({
+  library(dplyr); library(stringr); library(tidyr); library(ggplot2)
+  library(ggrepel); library(forcats); library(purrr); library(scales)
+})
+
+# ---- helpers ---------------------------------------------------------------
+clean_outcome <- function(x) {
+  x %>%
+    str_replace("\\s*\\(\\s*\\.50\\s*(,\\s*Trim\\s*[123])?\\s*(,\\s*PP 6Wks\\s*)?s*\\)\\s*$", "") %>% 
+    str_squish()
+}
+
+relabel_outcome <- function(x) {
+  x <- toupper(x)
+  dplyr::recode(x,
+    "COMPO"                = "SVN Composite",
+    "PRETERM 37WKS"        = "Preterm<37weeks",
+    "PRETERM 34WKS"        = "Preterm<34weeks",
+    "SGA10"                = "SGA<10th",
+    "SGA3"                 = "SGA<3th",
+    "LBW<2500G"            = "LBW<2500g",
+    "LBW<1500G"            = "LBW<1500g",
+    "STILLBIRTH 20WKS"     = "Stillbirth>=20weeks",
+    "STILLBIRTH 28WKS"     = "Stillbirth>=28weeks",
+    "HYPERBILIRUBINEMIA"   = "Hyperbilirubinemia",
+    "NEONATAL MORTALITY"   = "Neonatal Mortality",
+    "PSBI"                 = "PSBI",
+    "ASPH"                 = "ASPH",
+    "MAT COMPO"            = "Maternal Composite",
+    "PRECLAMP"             = "Preeclampsia",
+    "PREECLAMP"            = "Preeclampsia",
+    "PREECLAMPSIA"         = "Preeclampsia",
+    "PPROM"                = "PPROM",
+    "PPH"                  = "PPH",
+    "DPR ANC"              = "Depression at ANC",
+    "DPR PNC"              = "Depression at PNC",
+    "PPA PNC6"             = "PPA-PNC6",
+    "PPA PNC26"            = "PPA-PNC26",
+    .default = x
+  )
+}
+
+colors_20_custom <- c(
+  "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+  "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
+  "#bcbd22", "#17becf", "#9E9D24", "#f39c12",
+  "#2ecc71", "#e74c3c", "#2196F3", "#1abc9c",
+  "#8E44AD", "#34495e", "#16a085", "#f1c40f",
+  "#2d3987", "#C52C1A"
+)
+
+build_df_new <- function(grid) {
+  grid %>%
+    transmute(
+      Outcome_raw = clean_outcome(Outcome),
+      Outcome_lbl = relabel_outcome(Outcome_raw),
+      Hb_sequence = hb,
+      risk = risk
+    ) %>%
+    filter(!is.na(risk)) %>%
+    filter(!str_detect(Outcome_lbl, regex("EPDS\\s*score|FATIGUE\\s*score|FAT|EPDS", ignore_case = TRUE))) %>%
+    rename(Outcome = Outcome_lbl)
+}
+
+# hard-code x: 5..18; major=1, minor=0.5
+x_scale_5_18 <- function() {
+  scale_x_continuous(
+    breaks = seq(5, 18, by = 1),
+    minor_breaks = seq(5, 18, by = 0.5),
+    limits = c(5, 18),
+    expand = c(0, 0)
+  )
+}
+
+theme_common <- function() {
+  theme_bw() +
+    theme(
+      axis.text.x = element_text(angle = 90, vjust = 1, hjust = 0.5),
+      axis.text = element_text(size = 8),
+      legend.position = "none",
+      panel.grid.minor = element_blank(),
+      strip.background = element_rect(fill = "white"),
+      strip.text = element_text(size = 8),
+      plot.title = element_text(size = 12)
+    )
+}
+
+# Conditional end labels: show == TRUE adds labels; FALSE returns p unchanged
+add_end_labels_cond <- function(p, data_end, show = TRUE) {
+  if (!show || is.null(data_end) || nrow(data_end) == 0) return(p)
+  p + geom_label_repel(
+    data = data_end,
+    aes(label = Outcome, color = Outcome),
+    box.padding = 0.25,
+    point.padding = 0.25,
+    segment.color = "grey50",
+    size = 2,
+    max.overlaps = 10
+  )
+}
+
+# ---------- main plotting wrapper ----------
+plot_all_for_grid <- function(grid, suffix = " ") {
+  
+  df_new <- build_df_new(grid)
+  
+  if (length(unique(df_new$Outcome)) > length(colors_20_custom)) {
+    stop("Not enough colors for the number of unique outcomes!")
+  }
+
+  # order by right edge so labels would stack (when shown)
+  ord <- df_new %>%
+    group_by(Outcome) %>%
+    slice_max(Hb_sequence, n = 1, with_ties = FALSE) %>%
+    summarise(risk_end = mean(risk, na.rm = TRUE), .groups = "drop") %>%
+    arrange(desc(risk_end)) %>% pull(Outcome)
+  df_new <- df_new %>% mutate(Outcome = factor(Outcome, levels = ord))
+  df_end <- df_new %>% group_by(Outcome) %>% slice_max(Hb_sequence, n = 1, with_ties = FALSE) %>% ungroup()
+
+  # hide labels on "All" main plots (overview + 4 risk subsets)
+  show_labels_main <- !grepl("^\\b", suffix, ignore.case = TRUE)
+
+  # Overview
+  p_all <- ggplot(df_new, aes(Hb_sequence, risk, color = Outcome)) +
+    geom_line() +
+    scale_color_manual(values = colors_20_custom) +
+    labs(title = paste0("Overview of Risk vs Hb — ", suffix),
+         x = "Hemoglobin", y = "Risk of Event", color = "Outcome") +
+    x_scale_5_18() +
+    scale_y_continuous(breaks = seq(0, 1, 0.1)) +
+    theme_common()
+  p_all <- add_end_labels_cond(p_all, df_end, TRUE)
+
+  # Subsets
+  df_cat1 <- df_new %>% filter(Outcome %in% c("SVN Composite","LBW<2500g","LBW<1500g","SGA<10th","SGA<3th","Preterm<34weeks","Preterm<37weeks"))
+  p1 <- if (nrow(df_cat1)) {
+    end <- df_cat1 %>% group_by(Outcome) %>% slice_max(Hb_sequence, n = 1, with_ties = FALSE) %>% ungroup()
+    g <- ggplot(df_cat1, aes(Hb_sequence, risk, color = Outcome)) +
+      geom_line() +
+      scale_color_manual(values = colors_20_custom) +
+      labs(title = paste0("Infant Birth Outcomes (", suffix, ")"),
+           x = "Hemoglobin", y = "Risk of Event", color = "Outcome") +
+      x_scale_5_18() +
+      scale_y_continuous(breaks = seq(0, 1, 0.1)) +
+      theme_common()
+    add_end_labels_cond(g, end, TRUE)
+  } else NULL
+
+  df_cat2 <- df_new %>% filter(Outcome %in% c("Stillbirth>=20weeks","Stillbirth>=28weeks","Hyperbilirubinemia","ASPH","PSBI","Neonatal Mortality"))
+  p2 <- if (nrow(df_cat2)) {
+    end <- df_cat2 %>% group_by(Outcome) %>% slice_max(Hb_sequence, n = 1, with_ties = FALSE) %>% ungroup()
+    g <- ggplot(df_cat2, aes(Hb_sequence, risk, color = Outcome)) +
+      geom_line() +
+      scale_color_manual(values = colors_20_custom) +
+      labs(title = paste0("Birth Timing & Health (", suffix, ")"),
+           x = "Hemoglobin", y = "Risk of Event", color = "Outcome") +
+      x_scale_5_18() +
+      scale_y_continuous(breaks = seq(0, 1, 0.1)) +
+      theme_common()
+    add_end_labels_cond(g, end, TRUE)
+  } else NULL
+
+  df_cat3 <- df_new %>% filter(Outcome %in% c("Maternal Composite","PPROM","Preeclampsia","PPH"))
+  p3 <- if (nrow(df_cat3)) {
+    end <- df_cat3 %>% group_by(Outcome) %>% slice_max(Hb_sequence, n = 1, with_ties = FALSE) %>% ungroup()
+    g <- ggplot(df_cat3, aes(Hb_sequence, risk, color = Outcome)) +
+      geom_line() +
+      scale_color_manual(values = colors_20_custom) +
+      labs(title = paste0("Maternal Complications (", suffix, ")"),
+           x = "Hemoglobin", y = "Risk of Event", color = "Outcome") +
+      x_scale_5_18() +
+      scale_y_continuous(breaks = seq(0, 1, 0.1)) +
+      theme_common()
+    add_end_labels_cond(g, end, TRUE)
+  } else NULL
+
+  df_cat4 <- df_new %>% filter(Outcome %in% c("PPA-PNC26","PPA-PNC6"))
+  p4 <- if (nrow(df_cat4)) {
+    end <- df_cat4 %>% group_by(Outcome) %>% slice_max(Hb_sequence, n = 1, with_ties = FALSE) %>% ungroup()
+    g <- ggplot(df_cat4, aes(Hb_sequence, risk, color = Outcome)) +
+      geom_line() +
+      scale_color_manual(values = colors_20_custom) +
+      labs(title = paste0("Postpartum Anemia (", suffix, ")"),
+           x = "Hemoglobin", y = "Risk of Event", color = "Outcome") +
+      x_scale_5_18() +
+      scale_y_continuous(breaks = seq(0, 1, 0.1)) +
+      theme_common()
+    add_end_labels_cond(g, end, TRUE)
+  } else NULL
+
+  
+  
+  # Scores: always keep labels
+  df_dpr_score <- df_new %>% 
+    filter(str_detect(Outcome, regex("DPR|Depression", ignore_case = TRUE)))
+  
+  p5 <- if (nrow(df_dpr_score)) {
+    
+    end <- df_dpr_score %>% 
+      group_by(Outcome) %>% 
+      slice_max(Hb_sequence, n = 1, with_ties = FALSE) %>% 
+      ungroup()
+    
+    two_dp <- label_number(accuracy = 0.01, trim = TRUE)
+    
+    ggplot(df_dpr_score, aes(Hb_sequence, risk, color = Outcome)) +
+      geom_line() +
+      scale_color_manual(values = colors_20_custom) +
+      labs(title = paste0("Depression vs Hemoglobin (", suffix, ")"),
+           x = "Hemoglobin", y = "Risk", color = "Outcome") +
+      x_scale_5_18() +
+      theme_bw() +
+      theme(
+        axis.text.x = element_text(angle = 90, vjust = 1, hjust = 0.5),
+        axis.text = element_text(size = 8),
+        legend.position = "none",
+        panel.grid.minor = element_blank(),
+        strip.background = element_rect(fill = "white"),
+        strip.text = element_text(size = 8),
+        plot.title = element_text(size = 12)
+      ) +
+      geom_label_repel(
+        data = end, aes(label = Outcome, color = Outcome),
+        box.padding = 0.25, point.padding = 0.25,
+        segment.color = "grey50", size = 2, max.overlaps = 10
+      )
+  } else NULL
+
+  df_fat_score <- grid %>% transmute(Outcome = relabel_outcome(clean_outcome(Outcome)),
+                                     Hb_sequence = hb, score = risk) %>%
+    filter(str_detect(Outcome, regex("FAT|FATIGUE", ignore_case = TRUE)))
+  p6 <- if (nrow(df_fat_score)) {
+    
+    end <- df_fat_score %>% group_by(Outcome) %>% slice_max(Hb_sequence, n = 1, with_ties = FALSE) %>% ungroup()
+    
+    two_dp <- label_number(accuracy = 0.01, trim = TRUE)
+    
+    ggplot(df_fat_score, aes(Hb_sequence, score, color = Outcome)) +
+      geom_line() +
+      scale_color_manual(values = colors_20_custom) +
+      labs(title = paste0("Fatigue Score vs Hemoglobin (", suffix, ")"),
+           x = "Hemoglobin", y = "Score", color = "Outcome") +
+      scale_y_continuous(
+      labels = function(x) sub("\\.?0+$","", sprintf("%.2f", x))  # ≤2 decimals, no trailing zeros
+      ) +
+       x_scale_5_18() +
+      theme_bw() +
+      theme(
+        axis.text.x = element_text(angle = 90, vjust = 1, hjust = 0.5),
+        axis.text = element_text(size = 8),
+        legend.position = "none",
+        panel.grid.minor = element_blank(),
+        strip.background = element_rect(fill = "white"),
+        strip.text = element_text(size = 8),
+        plot.title = element_text(size = 12)
+      ) +
+      geom_label_repel(
+        data = end, aes(label = Outcome, color = Outcome),
+        box.padding = 0.25, point.padding = 0.25,
+        segment.color = "grey50", size = 2, max.overlaps = 10
+      )
+  } else NULL
+
+  list(
+    overview = p_all,
+    infant   = p1,
+    birth    = p2,
+    maternal = p3,
+    ppa      = p4,
+    dpr      = p5,
+    fat      = p6
+  )
+}
+
+```
+
+### All Trimesters
+#### Overview of all outcomes 
+```{r all-panel1, fig.width=10, fig.height=10, out.width='80%'}
+
+library(patchwork)
+
+plots_all <- plot_all_for_grid(hb_grid, "All Trimesters")
+sub1 <- purrr::compact(plots_all[c("overview")])
+
+sub1[[1]]
+
+```
+\newpage
+#### Infant Birth, Size and Health Condition Outcomes
+```{r all-panel2, fig.width=8, fig.height=10, out.width='80%'}
+
+library(patchwork)
+
+plots_all <- plot_all_for_grid(hb_grid, "All Trimesters")
+sub2 <- purrr::compact(plots_all[c("infant","birth")])
+
+# two on one page (side-by-side). Use "/" instead of "|" for stacked.
+sub2[[1]] / sub2[[2]]
+
+```
+\newpage
+#### Maternal Outcomes
+```{r all-panel3, fig.width=8, fig.height=10, out.width='80%'}
+
+library(patchwork)
+
+plots_all <- plot_all_for_grid(hb_grid, "All Trimesters")
+sub3 <- purrr::compact(plots_all[c("maternal","ppa")])
+
+# two on one page (side-by-side). Use "/" instead of "|" for stacked.
+sub3[[1]] / sub3[[2]]
+
+```
+\newpage
+#### Depression and Fatigue Scores
+```{r all-panel4, fig.width=8, fig.height=10, out.width='80%'}
+
+library(patchwork)
+
+plots_all <- plot_all_for_grid(hb_grid, "All Trimesters")
+sub4 <- purrr::compact(plots_all[c("dpr","fat")])
+
+# two on one page (side-by-side). Use "/" instead of "|" for stacked.
+sub4[[1]] / sub4[[2]]
+
+```
+\newpage
+
+### Trimester 1
+#### Overview of all outcomes 
+```{r t1-panel1, fig.width=8, fig.height=6, out.width='80%'}
+
+plots_t1 <- plot_all_for_grid(hb_grid_t1, "Trimester 1")
+sub1 <- purrr::compact(plots_t1[c("overview")])
+
+sub1[[1]]
+
+```
+\newpage
+#### Infant Birth, Size and Health Condition Outcomes
+```{r t1-panel2, fig.width=8, fig.height=10, out.width='80%'}
+
+plots_t1 <- plot_all_for_grid(hb_grid_t1, "Trimester 1")
+sub2 <- purrr::compact(plots_t1[c("infant","birth")])
+
+# two on one page (side-by-side). Use "/" instead of "|" for stacked.
+sub2[[1]] / sub2[[2]]
+
+```
+\newpage
+#### Maternal Outcomes
+```{r t1-panel3, fig.width=8, fig.height=10, out.width='80%'}
+
+plots_t1 <- plot_all_for_grid(hb_grid_t1, "Trimester 1")
+sub3 <- purrr::compact(plots_t1[c("maternal","ppa")])
+
+# two on one page (side-by-side). Use "/" instead of "|" for stacked.
+sub3[[1]] / sub3[[2]]
+
+```
+\newpage
+#### Depression and Fatigue Scores
+```{r t1-panel4, fig.width=5, fig.height=4, out.width='80%'}
+
+plots_t1 <- plot_all_for_grid(hb_grid_t1, "Trimester 1")
+sub4 <- purrr::compact(plots_t1[c("dpr")])
+
+# two on one page (side-by-side). Use "/" instead of "|" for stacked.
+sub4[[1]] 
+
+```
+\newpage
+
+### Trimester 2
+#### Overview of all outcomes 
+```{r t2-panel1, fig.width=8, fig.height=6, out.width='80%'}
+
+plots_t2 <- plot_all_for_grid(hb_grid_t2, "Trimester 2")
+sub1 <- purrr::compact(plots_t2[c("overview")])
+
+sub1[[1]]
+
+```
+\newpage
+#### Infant Birth, Size and Health Condition Outcomes
+```{r t2-panel2, fig.width=8, fig.height=10, out.width='80%'}
+
+plots_t2 <- plot_all_for_grid(hb_grid_t2, "Trimester 2")
+sub2 <- purrr::compact(plots_t2[c("infant","birth")])
+
+# two on one page (side-by-side). Use "/" instead of "|" for stacked.
+sub2[[1]] / sub2[[2]]
+
+```
+\newpage
+#### Maternal Outcomes
+```{r t2-panel3, fig.width=8, fig.height=10, out.width='80%'}
+
+plots_t2 <- plot_all_for_grid(hb_grid_t2, "Trimester 2")
+sub3 <- purrr::compact(plots_t2[c("maternal","ppa")])
+
+# two on one page (side-by-side). Use "/" instead of "|" for stacked.
+sub3[[1]] / sub3[[2]]
+
+```
+\newpage
+#### Depression and Fatigue Scores
+```{r t2-panel4, fig.width=8, fig.height=10, out.width='80%'}
+
+plots_t2 <- plot_all_for_grid(hb_grid_t2, "Trimester 2")
+sub4 <- purrr::compact(plots_t2[c("dpr","fat")])
+
+# two on one page (side-by-side). Use "/" instead of "|" for stacked.
+sub4[[1]] / sub4[[2]]
+
+```
+\newpage
+
+### Trimester 3
+#### Overview of all outcomes 
+```{r t3-panel1, fig.width=8, fig.height=6, out.width='80%'}
+
+plots_t3 <- plot_all_for_grid(hb_grid_t3, "Trimester 3")
+sub1 <- purrr::compact(plots_t3[c("overview")])
+
+sub1[[1]]
+
+```
+\newpage
+#### Infant Birth, Size and Health Condition Outcomes
+```{r t3-panel2, fig.width=8, fig.height=10, out.width='80%'}
+
+plots_t3 <- plot_all_for_grid(hb_grid_t3, "Trimester 3")
+sub2 <- purrr::compact(plots_t3[c("infant","birth")])
+
+# two on one page (side-by-side). Use "/" instead of "|" for stacked.
+sub2[[1]] / sub2[[2]]
+
+```
+\newpage
+#### Maternal Outcomes
+```{r t3-panel3, fig.width=8, fig.height=10, out.width='80%'}
+
+plots_t3 <- plot_all_for_grid(hb_grid_t3, "Trimester 3")
+sub3 <- purrr::compact(plots_t3[c("maternal","ppa")])
+
+# two on one page (side-by-side). Use "/" instead of "|" for stacked.
+sub3[[1]] / sub3[[2]]
+
+```
+\newpage
+#### Depression and Fatigue Scores
+```{r t3-panel4, fig.width=8, fig.height=10, out.width='80%'}
+
+plots_t3 <- plot_all_for_grid(hb_grid_t3, "Trimester 3")
+sub4 <- purrr::compact(plots_t3[c("dpr","fat")])
+
+# two on one page (side-by-side). Use "/" instead of "|" for stacked.
+sub4[[1]] / sub4[[2]]
+
+```
+\newpage
+### Postpartum 6weeks
+#### Maternal Anemia at 6months
+```{r p6-panel1, fig.width=8, fig.height=6, out.width='80%'}
+
+plots_p6 <- plot_all_for_grid(hb_grid_p6, "Postpartum 6weeks")
+sub1 <- purrr::compact(plots_p6[c("overview")])
+
+sub1[[1]]
+
+```
+#### Depression and Fatigue Scores
+```{r p6-panel4, fig.width=10, fig.height=8, out.width='80%'}
+
+plots_p6 <- plot_all_for_grid(hb_grid_p6, "Postpartum 6weeks")
+sub4 <- purrr::compact(plots_p6[c("dpr","fat")])
+
+# two on one page (side-by-side). Use "/" instead of "|" for stacked.
+sub4[[1]] | sub4[[2]]
+
+```

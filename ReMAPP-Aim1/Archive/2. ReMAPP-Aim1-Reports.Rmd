@@ -1,0 +1,2486 @@
+---
+title: "<span style='font-size: 18px'> <span style='text-align: center'> ReMAPP Aim 1 Report"
+date: "Issued: `r Sys.Date()`"
+output:
+  pdf_document:
+    toc: no 
+    toc_depth: 3
+    number_sections: true
+    latex_engine: xelatex  
+    keep_tex: true
+  toc-title: Table of Contents
+---
+
+
+**Abbreviation:**
+
+**ReMAPP:** Redefining Maternal Anemia in Pregnancy and Postpartum Study
+
+**FPR:** Fractional polynomial regression
+
+&nbsp;
+&nbsp;
+
+**Version:**
+
+**Date of included data upload to Synapse: ** 2025-04-04
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, out.width = "100%") 
+knitr::opts_chunk$set(out.width = "100%", fig.align = "center")
+
+library(tidyverse)
+library(naniar)
+library(flextable)
+library(officer)
+library(scales) 
+library(wesanderson)
+library(gridExtra)
+library(gt)
+library(flowchart)
+library(magick)
+library(gtsummary)
+
+
+UploadDate = "2025-04-04"
+
+#setwd(file.path("D:/Users/williams_pj/Documents/Analysis/ReMAPP/Aim1", UploadDate))
+
+#all Prisma participants with criteria and remapp eligibility defined
+load("derived_data/healthyOutcome.rda")
+#all healthy cohort data with both ga_wks info and hb values
+load("derived_data/df_hb_long1_all.rda")
+load("derived_data/df_hb_wide1_all.rda")
+load("derived_data/df_hb_long1.rda")
+load("derived_data/df_hb_wide1.rda")
+#include outcome var for df_hb_long1
+load("derived_data/df_sensitive_long.rda")
+#long data for criteria eligibility figure
+load("derived_data/df_eli_long.rda")
+load("derived_data/all_screen.rda")
+load("derived_data/MAT_DEMOGRAPHIC.rda")
+load("derived_data/inf_perinatal_df.rda")
+
+
+#test table format 1
+#pvalue format
+p_val_format <- function(x){
+  z <- scales::pvalue_format()(x)
+  z[!is.finite(x)] <- ""
+  z
+}
+
+#table format
+tb_flextable <- function(data, caption, seq_id, bkm) { 
+  tb <- qflextable(data)
+  tb <- set_table_properties(
+    tb, width = 0.8, layout = "autofit",
+    opts_pdf = list(tabcolsep = 3)) 
+  tb <- set_caption(tb,
+    caption = as_paragraph(
+as_chunk(caption, props = fp_text_default(font.family = "Arial"))
+),
+    word_stylename = "Table Caption",
+    autonum = run_autonum(seq_id = seq_id, bkm = bkm)
+  )
+  tb <- bold(tb, bold = FALSE, part = "header")
+  tb <- set_formatter(tb, values = list(
+    "p.value" = p_val_format))
+  tb
+}
+#table format for summary table by site
+tb_theme2 <- function(matrix){
+  tb <- matrix %>% 
+    gt(
+      rownames_to_stub = TRUE
+    ) %>% 
+    opt_align_table_header(align = "left") %>% 
+    tab_spanner(
+      label = "Site",
+      columns = c(-Total)
+    ) %>% 
+    opt_stylize(style = 6, color = 'cyan') %>% 
+    #title style
+    tab_style(
+      style = list(
+        cell_fill(color = "#016795"),
+        cell_text(weight = "bold"),
+        cell_text(v_align = "middle"),
+        cell_text(color = "white")
+      ),
+      locations = list(
+        cells_title()
+      )
+    ) %>% 
+    #stub head, spanner column, column label style
+    tab_style(
+      style = list(
+        cell_fill(color = "#9edee0"),
+        cell_text(weight = "bold"),
+        cell_text(color = "black"),
+        cell_text(v_align = "middle") 
+      ),
+      locations = list(
+        cells_stubhead(),
+        cells_column_spanners(),
+        cells_column_labels() 
+      )
+    ) %>% 
+    #cell style
+    tab_style(
+      style = list(
+        cell_fill(color = "#ebfcf9"),
+        # cell_text(weight = "bold")
+        cell_text(v_align = "middle") 
+      ),
+      locations = list(
+        cells_stub()
+      ) 
+    ) %>% 
+    #column labels align center
+    tab_style(
+      style = list(
+        cell_text(align = "center") 
+      ),
+      locations = list(
+        cells_column_labels(columns = everything())
+      )
+    ) %>% 
+    #table body align right
+    tab_style(
+      style = list(
+        cell_text(align = "center") 
+      ),
+      locations = list(
+        cells_body(columns = everything())
+      ) 
+    ) %>%
+    fmt_markdown(columns = everything()) %>%
+    # fix column width
+    tab_options(table.width = pct(100)) %>%
+    cols_width(1 ~ px(200))
+} 
+
+#table format for other table
+tb_theme3 <- function(matrix){
+  tb <- matrix %>% 
+    gt(
+      #show row names
+      rownames_to_stub = FALSE
+    ) %>% 
+    opt_align_table_header(align = "left") %>% 
+    opt_stylize(style = 6, color = 'cyan') %>% 
+    #title style
+    tab_style(
+      style = list(
+        cell_fill(color = "#016795"),
+        cell_text(weight = "bold"),
+        cell_text(v_align = "middle"),
+        cell_text(color = "white")
+      ),
+      locations = list(
+        cells_title()
+      )
+    ) %>% 
+    #stub head, spanner column, column label style
+    tab_style(
+      style = list(
+        cell_fill(color = "#9edee0"),
+        cell_text(weight = "bold"),
+        cell_text(color = "black"),
+        cell_text(v_align = "middle") 
+      ),
+      locations = list(
+        cells_stubhead(),
+        cells_column_spanners(),
+        cells_column_labels() 
+      )
+    ) %>% 
+    #first column color
+    tab_style(
+      style = list(
+        cell_fill(color = "#f2fafa"),
+        cell_text(weight = "bold")
+      ),
+      locations = cells_body(
+        columns = 1
+      )
+    ) %>%
+    fmt_markdown(columns = everything()) %>%
+    sub_missing(
+     columns = everything(),
+     rows = everything(),
+     missing_text = ""
+    ) 
+} 
+
+```
+
+
+
+\tableofcontents
+
+\newpage
+
+# **Study data selection criteria and cleaning**
+
+## Eligibility status and missingness of healthy cohort criteria
+
+Figure shows the distribution of each healthy cohort criteria (C1-C20) among women enrolled in
+PRISMA between ReMAPP launch and end date. Pending includes missing form, diagnosis, data, tests not performed or test results pending.
+
+Note that the criteria are ranked by eligibility percentage, with the most commonly met criteria appearing at the top.
+
+
+```{r}
+#reverse x and y axis
+#plot_criteria <- df_eli_long 
+plot_crit <- df_eli_long %>%
+  group_by(SITE, Variable, Value) %>%
+  summarise(Count = n(), .groups = "drop") %>%
+  ungroup()
+
+# Create a total column across all sites
+plot_crit_total <- df_eli_long %>%
+  group_by(Variable, Value) %>%
+  summarise(Count = n(), .groups = "drop") %>%
+  mutate(SITE = "Total")
+
+# Combine site-specific and total data
+plot_crit <- bind_rows(plot_crit_total, plot_crit)  # Ensure "Total" appears first
+
+# Calculate the order based on the most ineligible criteria
+order_criteria <- plot_crit %>%
+  filter(Value %in% c("Ineligible", "Pending")) %>%
+  group_by(Variable) %>%
+  summarise(Total_NotEligible = sum(Count), .groups = "drop") %>%
+  arrange(desc(Total_NotEligible)) %>%
+  pull(Variable)
+
+# Set SITE order to ensure "Total" comes first
+plot_crit$SITE <- factor(plot_crit$SITE, levels = c("Total", unique(df_eli_long$SITE)))
+
+# Plot the data
+ggplot(plot_crit, aes(y = factor(Variable, levels = (order_criteria)), fill = Value)) + 
+  geom_bar(stat = "identity", aes(x = Count / sum(Count)), position = position_fill(reverse = TRUE)) +
+  scale_x_continuous(labels = percent) + 
+  scale_fill_manual(values = c("#43bfc7","#F0833A","lightgrey"), drop = FALSE) + 
+  xlab("Percent of participants eligible") + 
+  ylab("") +
+  facet_grid(~SITE, scales = "free_y") + 
+  theme_bw() +  
+  theme(strip.background = element_rect(fill = "white"),
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 10),
+        axis.text.x = element_text(size = 6, angle = 90),
+        legend.key.size = unit(0.38, "cm"),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 8))
+
+```
+
+
+**Description of eligibility criteria (C1-C20):**
+
+* C1: Aged 18 to 34 years;
+* C2: Gestational age <14 weeks 
+* C3: Pre-pregnancy or early pregnancy body mass index (BMI) of >18.5 and <30 kg/m2 AND mid-upper arm circumference (MUAC) >23cm 
+* C4: Height >=150 cm 
+* C5: Singleton pregnancy 
+* C6: No previous reported low birth weight delivery
+* C7: No previous reported stillbirth
+* C8: No previous reported unplanned cesarean delivery
+* C9: No reported cigarette smoking, tobacco chewing, or betel nut use during pregnancy
+* C10: No reported alcohol consumption during pregnancy
+* C11: No known history or current chronic disease including cancer, kidney disease, and cardiac conditions
+* C12: No known history or current HIV
+* C13: Systolic blood pressure <140 mmHg and diastolic blood pressure <90 mmHg 
+* C14: No current malaria infection (per rapid diagnostic test)
+* C15: No current Hepatitis B virus infection (per rapid diagnostic test)
+* C16: No current Hepatitis C virus infection (per rapid diagnostic test)
+* C17: Not iron deficient (serum ferritin >15 mcg/L adjusted for inflammation) 
+* C18: No subclinical inflammation (CRP<=5 mg/L and/or AGP<=1 g/L) 
+* C19: No hemoglobinopathies: SS, SC, SE, EE, CC, SD-Punjab, Sβthal, Eβthal, Cβthal, CD-Punjab, ED-Punjab, D-D-Punjab, D-Punjabβthal, Thalassemia major, Thalassemia intermedia, or Alpha thalassemia
+* C20: Normal glucose-6-phosphate dehydrogenase (>=6.1 U/g Hb)
+
+
+## Sample size and analytical subcohort
+
+```{r data overview,out.width='100%'}
+healthy_n <- healthyOutcome %>% 
+  group_by(SITE) %>% 
+  summarise(
+    "Total enrolled in PRISMA MNH since ReMAPP launch, N" = n(), 
+    "Eligible* for healthy cohort, n (%)" = 
+      paste0(sum(HEALTHY_ELIGIBLE == 1, na.rm = TRUE),
+             " (", format(sum(HEALTHY_ELIGIBLE == 1, na.rm = TRUE)/sum(!is.na(HEALTHY_ELIGIBLE))*100, digits = 2, nsmall = 2), ")"),
+  "Eligible for healthy cohort - GA Applied, n (%)" = 
+      paste0(sum(HEALTHY_ELIGIBLE_GA == 1, na.rm = TRUE),
+             " (", format(sum(HEALTHY_ELIGIBLE_GA == 1, na.rm = TRUE)/sum(!is.na(HEALTHY_ELIGIBLE_GA))*100, digits = 2, nsmall = 2), ")"),  
+  ) %>% 
+  ungroup() %>%
+  t() %>% as.data.frame() %>%
+  `colnames<-`(c(.[1,])) %>%
+  slice(-1) %>% 
+  add_column(
+    .after = 8,
+    "Total" = healthyOutcome %>%
+      summarise(
+        "Total enrolled in PRISMA MNH since ReMAPP launch, N" = n(), 
+        "Eligible* for healthy cohort, n (%)" = 
+          paste0(sum(HEALTHY_ELIGIBLE == 1, na.rm = TRUE),
+                 " (", format(sum(HEALTHY_ELIGIBLE == 1, na.rm = TRUE)/sum(!is.na(HEALTHY_ELIGIBLE))*100, digits = 2, nsmall = 2), ")"),
+   "Eligible for healthy cohort - GA Applied, n (%)" = 
+      paste0(sum(HEALTHY_ELIGIBLE_GA == 1, na.rm = TRUE),
+             " (", format(sum(HEALTHY_ELIGIBLE_GA == 1, na.rm = TRUE)/sum(!is.na(HEALTHY_ELIGIBLE_GA))*100, digits = 2, nsmall = 2), ")")     
+      ) %>% 
+      t() %>% unlist()) 
+
+healthy_hb_n <- df_hb_wide1_all %>%
+  group_by(SITE) %>%
+  summarise(
+    "Healthy cohort with hemoglobin and gestional age data, n" = sum(!is.na(PREG_START_DATE))
+  ) %>%
+  ungroup() %>%
+  t() %>% as.data.frame() %>%
+  `colnames<-`(c(.[1,])) %>%
+  slice(-1) %>%
+  add_column(
+    .after = 8,
+    "Total" = df_hb_wide1_all %>%
+      summarise(
+        "Healthy cohort with hemoglobin and gestional age data, n" = as.character(sum(!is.na(PREG_START_DATE)))
+      ) %>%
+      t() %>% unlist())
+
+healthy_hb_no_outlier <- df_hb_wide1 %>%
+  group_by(SITE) %>%
+  summarise(
+    "Healthy cohort with hemoglobin and gestional age outlier** removed, n" = as.character(sum(!is.na(PREG_START_DATE)))
+  ) %>%
+  ungroup() %>%
+  t() %>% as.data.frame() %>%
+  `colnames<-`(c(.[1,])) %>%
+  slice(-1) %>%
+  add_column(
+    .after = 8,
+    "Total" = df_hb_wide1 %>%
+      summarise(
+        "Healthy cohort with hemoglobin and gestional age outlier** removed, n" = as.character(sum(!is.na(PREG_START_DATE))),
+      ) %>%
+      t() %>% unlist())
+
+size_hb <- df_hb_long1 %>%
+  group_by(SITE) %>%
+  summarise(
+    "Hemoglobin data points in FPR analysis, n" = as.character(sum(!is.na(hb))), #changed this from n to where hb is not NA
+  ) %>%
+  ungroup() %>%
+  t() %>% as.data.frame() %>%
+  `colnames<-`(c(.[1,])) %>%
+  slice(-1) %>%
+  add_column(
+    .after = 8,
+    "Total" = df_hb_long1 %>%
+      summarise(
+        "Hemoglobin data points in FPR analysis, n" = as.character((sum(!is.na(hb)))),
+      ) %>%
+      t() %>% unlist())
+
+tb_data <- healthy_n %>%
+  bind_rows(healthy_hb_n) %>%
+  bind_rows(healthy_hb_no_outlier) %>%
+  bind_rows(size_hb)
+
+tb1 <- tb_theme2(tb_data) %>% 
+  # table title
+  tab_header(
+    title = paste0("Table 1. Healthy cohort eligibility and data for FPR analysis")
+  ) %>%
+  tab_footnote(
+    footnote = c("*Criteria of gestational age is not applied due to low first trimester enrollment. Pending value allowed for following criteria due to high pending rate: inflammation, iron deficiency, hemoglobinopathies and G6PD.")
+  ) %>%
+    tab_footnote(
+    footnote = c("**Outliers: GA < 6 or HB < 5 or HB > 18")
+  ) %>%
+   tab_style(
+      style = list(
+        cell_fill(color = "#f2fafa"),
+        cell_text(color = "#016795")
+      ),
+      locations = cells_body(
+        rows = c(4,5)
+      )
+    ) %>%
+  gtsave(paste0("tb1.png"), expand = 10)
+
+knitr::include_graphics("tb1.png")
+
+```
+
+*Note: Last two rows indicate the number of participants and number of HB data points included in the analysis*
+\newpage
+
+## Flow diagram illustrating women included in the Healthy Cohort Analysis
+
+The flowchart illustrates the selection process of female participants for inclusion in the Healthy Cohort analysis within the ReMAPP sample, detailing each stage from initial pre-screening to final eligibility determination.
+
+```{r,  echo=FALSE, include=FALSE} 
+
+#This is a the flow chart prep
+#Step 1: We want to create subset data for valid hb datasets
+ hb_data <- df_hb_wide1_all %>% filter (!is.na(PREG_START_DATE)) %>% 
+   mutate (HB_DATA = "Yes")  %>%
+   select (MOMID, PREGID, SITE, HB_DATA)
+ 
+ hb_valid_data <- df_hb_wide1 %>% filter (!is.na(PREG_START_DATE)) %>% 
+   mutate (HB_VALID_DATA = "Yes")  %>%
+   select (MOMID, PREGID, SITE, HB_VALID_DATA)
+ 
+ #Step 2: We want to make sure that each participant has just one exclusion criteria 
+ all_screen_df <- all_screen %>%
+   mutate(
+     # Create a single primary exclusion reason column
+     primary_exclusion = case_when(
+       HEALTHY_ELIGIBLE == 1 & screen_pass == "yes" ~ "eligible",
+       CRIT_INFLAM == 0 ~ "inflammation",
+       CRIT_IRON == 0 ~ "inadequate iron",
+       CRIT_BMI_MUAC  %in% c(0,55) ~ "bmi and muac not met",
+       CRIT_G6PD  %in% c(0,55) ~ "g6pd deficiency",
+       CRIT_HEIGHT  %in% c(0,55) ~ "height-ineligible",
+       CRIT_AGE %in% c(0,55) ~ "age-ineligible",
+       CRIT_UNPL_CESARIAN  %in% c(0,55) ~ "unplanned c-section",
+       CRIT_LBW  %in% c(0,55) ~ "low birth weight",
+       CRIT_SMOKE  %in% c(0,55) ~ "smoking",
+       CRIT_STILLBIRTH  %in% c(0,55) ~ "stillbirth history",
+       CRIT_HIV  %in% c(0,55) ~ "HIV positive",
+       CRIT_MALARIA  %in% c(0,55) ~ "malaria positive",
+       CRIT_DRINK  %in% c(0,55) ~ "alcohol use",
+       CRIT_HEPATITISB  %in% c(0,55) ~ "hepatitis b positive",
+       CRIT_HEPATITISC  %in% c(0,55) ~ "hepatitis c positive",
+       CRIT_SINGLEPREG  %in% c(0,55) ~ "not singleton pregnancy",
+       CRIT_CHRONIC %in% c(0,55) ~ "chronic disease",
+       CRIT_BP  %in% c(0,55) ~ "high blood pressure",
+       CRIT_HEMOGLOBINOPATHIES == 0 ~ "hemoglobinopathy",
+       TRUE ~ "other reasons" ) ) %>% 
+   left_join(hb_data, by = c("MOMID","PREGID","SITE")) %>% 
+   left_join(hb_valid_data, by = c("MOMID","PREGID","SITE")) %>% 
+    mutate( prescreen_pass = case_when(
+           (PRESCREEN == 1 & PRESCR_ELIGIBLE == 1 | (SCREEN == 1 & ELIGIBLE == 1)) ~ "Yes",
+            PRESCREEN == 1 & PRESCR_ELIGIBLE %in% c(0,99) ~ "No",
+            TRUE ~ NA_character_))
+    
+  exclusion_counts <- all_screen_df %>%
+    filter(HEALTHY_ELIGIBLE == 0) %>%
+    ungroup()  %>%
+    count(primary_exclusion, name = "count") %>%
+    arrange(desc(count))
+  
+  non_valid_hb <- df_hb_long1_all %>%
+    filter(ga_wks < 6 | hb < 5 | hb > 18) %>%
+    mutate(sec_exclusion = case_when(
+      ga_wks < 6 ~ " gestational age < 6wks",
+      hb < 5 | hb > 18 ~ " with outlier hemoglobin values",
+      TRUE ~ NA_character_)) %>%
+    ungroup() %>%
+    count(sec_exclusion, name = "count") %>%
+    arrange(desc(count))
+  
+  missing_hb <- all_screen_df %>%
+    filter(HEALTHY_ELIGIBLE == 1) %>%
+    filter(is.na(HB_DATA)) %>%
+    mutate(sec_exclusion =  " with no hemoglobin data") %>%
+    ungroup() %>%
+    count(sec_exclusion, name = "count") 
+ 
+exclusion_analysis <- bind_rows(missing_hb, non_valid_hb) 
+total_hb_measurements <- sum(!is.na(df_hb_long1$hb), na.rm = TRUE)
+
+#Step 3 
+# Create the flowchart with clean number-reason format
+flow <- all_screen_df %>%
+  as_fc(
+    label = "Women Interviewed (Screened)",
+    text_fs = 10,
+    text_pattern = "{label}\n{N}",
+    text_color = "black",
+    bg_fill = "#ebfcf9",
+    border_color = "#016795"
+  ) %>%
+  
+  # Prescreening step
+  fc_filter(
+    prescreen_pass == "Yes",
+    label = "Met Prescreening Criteria",
+    show_exc = TRUE,
+    text_fs_exc = 9,
+    text_fs = 10,
+    text_color = "black",
+    bg_fill = "#ebfcf9",
+    border_color = "#016795",
+    text_color_exc = "black",
+    bg_fill_exc = "#f2fafa",
+    border_color_exc = "#9edee0",
+    text_pattern = "{label}\n n={n}",
+    text_pattern_exc = "{label}\n n={n}",
+    just_exc = "left",
+    offset_exc = 0.08,
+    label_exc = paste(
+      "Did not meet prescreening criteria:",
+      paste0(sum(all_screen$PRESCR_PREGSIGN == 0, na.rm = TRUE), " not pregnant"),
+      paste0(sum(all_screen$CONSENT_PRESCREEN == 0, na.rm = TRUE), " did not consent"),
+      paste0(sum(all_screen$PRESCR_GA25 == 0, na.rm = TRUE), " GA >= 25wks"),
+      paste0(sum(all_screen$PRESCR_CATCHAREA == 0, na.rm = TRUE), " doesn't live in area"),
+      paste0(sum(all_screen$PRESCR_AGE == 0, na.rm = TRUE), " doesn't meet age criteria"),
+      paste0(sum(all_screen$PRESCR_OTHER == 0, na.rm = TRUE), " other reasons"),
+      sep = "\n"
+    )
+  ) %>%
+  
+  # Screening step
+  fc_filter(
+    screen_pass == "Yes",
+    label = "Eligible for ReMAPP Analysis",
+    show_exc = TRUE,
+    text_fs_exc = 9,
+    text_fs = 10,
+    text_color = "black",
+    bg_fill = "#ebfcf9",
+    border_color = "#016795",
+    text_color_exc = "black",
+    bg_fill_exc = "#f2fafa",
+    border_color_exc = "#9edee0",
+    text_pattern = "{label}\n n={n}",
+    text_pattern_exc = "{label}\n n={n}",
+    just_exc = "left",
+    offset_exc = 0.08,
+    label_exc = paste(
+      "Did not meet screening criteria:",
+      paste0(sum(all_screen$GA20 == 0, na.rm = TRUE), " GA >= 20wks"),
+      paste0(sum(all_screen$SCRN_RETURN == 0, na.rm = TRUE), " did not return for screening"),
+      paste0(sum(all_screen$SCRN_CONSENT == 0, na.rm = TRUE), " withdrew consent"),
+      paste0(sum(all_screen$CATCHREMAIN == 0, na.rm = TRUE), " won't remain in area"),
+      paste0(sum(all_screen$CATCHAREA == 0, na.rm = TRUE), " doesn't live in area"),
+      paste0(sum(all_screen$AGE == 0, na.rm = TRUE), " doesn't meet age criteria"),
+      sep = "\n"
+    )
+  ) %>%
+  fc_filter(
+    HEALTHY_ELIGIBLE == 1,
+    label = "Healthy Cohort Eligible",
+    text_pattern = "{label}\n n={n}",
+    text_color = "black",
+    bg_fill = "#ebfcf9",
+    border_color = "#016795",
+    text_color_exc = "black",
+    bg_fill_exc = "#f2fafa",
+    border_color_exc = "#9edee0",
+    text_pattern_exc = "{label}\n n={n}",
+    just_exc = "left",
+    text_fs_exc = 9,
+    text_fs = 10,
+    show_exc = TRUE,
+    offset_exc = 0.08,
+    label_exc = paste0(
+      "Excluded from healthy cohort:\n",
+      paste(exclusion_counts$count, exclusion_counts$primary_exclusion, collapse = "\n")
+    )
+  ) %>%
+  
+  fc_filter(
+    HEALTHY_ELIGIBLE == 1 & HB_DATA == "Yes" & HB_VALID_DATA == "Yes",
+    label = paste0(
+      "Women with at least\none valid hb value and\nno GA outlier\n"),
+    text_pattern = "{label} n={n} \n (Total hemoglobin \n measurements=  {total_hb_measurements}) ",
+    text_pattern_exc = "{label}\n n={n}",
+    text_color = "black",
+    bg_fill = "#ebfcf9",
+    border_color = "#016795",
+    text_color_exc = "black",
+    bg_fill_exc = "#f2fafa",
+    border_color_exc = "#9edee0",
+    just_exc = "left",
+    text_fs_exc = 9,
+    text_fs = 10,
+    show_exc = TRUE,
+    offset_exc = 0.08,
+    label_exc = paste0(
+      "Excluded from analysis:\n",
+      paste(exclusion_analysis$count, exclusion_analysis$sec_exclusion, collapse = "\n")
+    )
+  )
+
+# Draw the flowchart
+flowchart <- flow %>%
+  fc_draw(
+    box_corners = "round",
+    title = "Participant Screening Flowchart",
+    title_fs = 16,
+    title_color = "black",
+    arrow_angle = 18
+  )
+
+# Export to PNG
+fc_export(
+  flowchart,
+  filename = "flowchart.png",
+  width = 6500,
+  height = 10000,
+  units = "px",
+  res = 550
+)
+
+# Trim whitespace
+img <- image_read("flowchart.png") %>%
+  image_trim()
+
+image_write(img, path = "flowchart_trimmed.png")
+
+```
+```{r flowchart, out.width='100%', out.height = '85%'} 
+knitr::include_graphics("flowchart_trimmed.png")
+```
+ \newpage
+
+## Baseline characteristics of Overall ReMAPP Sample and Healthy Cohort in Analysis
+
+The table below describes the baseline characteristics and maternal and perinatal outcome data for women enrolled in the Redefining Anemia in Pregnancy and Postpartum (ReMAPP) study compared to those in the healthy cohort.
+
+```{r,  echo=FALSE, include=FALSE} 
+
+#This is a the flow chart prep
+#Step 1: We want to create subset data for valid hb datasets
+REMAPP <- all_screen_df %>% filter (ELIGIBLE == 1) %>% select(MOMID, PREGID, SITE, HEALTHY_ELIGIBLE, HB_DATA, 
+       HB_VALID_DATA) 
+# First identify all your dichotomous variables
+dichotomous_vars <- c("MARRIED", "PAID_WORK", "NULLIPAROUS", 
+                      "MISCARRIAGE", "LIVEBIRTH", "SEX",
+                      "PRETERMBIRTH_LT37", "LBW2500_ANY", "INF_DTH")
+
+demo_df <- REMAPP %>% 
+  left_join(inf_perinatal_df, by = c("MOMID", "PREGID", "SITE")) %>%
+  left_join(MAT_DEMOGRAPHIC, by = c("MOMID", "PREGID", "SITE")) %>% 
+  mutate (
+    HEALTHY_CAT = case_when(HEALTHY_ELIGIBLE == 1 & HB_DATA == "Yes" & HB_VALID_DATA == "Yes" ~ "Healthy Cohort Analysis", 
+                            TRUE ~"ReMAPP cohort"),
+    BWEIGHT_KG = round(BWEIGHT_ANY/1000, 1)
+  )
+
+demo_table <- demo_df %>%
+  ungroup() %>%
+  select(HEALTHY_CAT, MAT_AGE, GA_WKS_ENROLL, BMI_ENROLL, MUAC_ENROLL, SCHOOL_YRS,
+         MARRIED, PAID_WORK, NULLIPAROUS, MISCARRIAGE, 
+         LIVEBIRTH, SEX, PRETERMBIRTH_LT37, BWEIGHT_KG, LBW2500_ANY, SGA_CENTILE, INF_DTH) %>%
+  tbl_summary(
+    by = HEALTHY_CAT,
+    type = list(
+      all_of(dichotomous_vars) ~ "dichotomous",
+      all_continuous() ~ "continuous"
+    ),
+    value = list(
+      all_of(dichotomous_vars) ~ "1"  # Only show stats for value = 1
+    ),
+    label = list(
+      MAT_AGE ~ "Age (years) mean (SD)",
+      GA_WKS_ENROLL ~ "Gestational age at first visit (weeks); mean (SD)",
+      BMI_ENROLL ~ "Body mass index (kg/m�); mean (SD)",
+      MUAC_ENROLL ~ "MUAC at first visit (cm); mean (SD)",
+      SCHOOL_YRS ~ "Years of formal education; mean (SD)",
+      MARRIED ~ "Married or cohabiting; n (%)",
+      PAID_WORK ~ "Engaged in paid work; n (%)",
+      NULLIPAROUS ~ "Never gave birth before \n(no live birth & no stillbirth); n (%)",
+      MISCARRIAGE ~ "Previous miscarriage; n (%)",
+      LIVEBIRTH ~ "Live birth outcome; n (%)",
+      SEX ~ "Male; n (%)",
+      PRETERMBIRTH_LT37 ~ "Preterm (<37 weeks' gestation); n (%)",
+      BWEIGHT_KG ~ "Birthweight (in kg); mean (SD)",
+      LBW2500_ANY ~ "Low birth weight (<2500g); n (%)",
+      SGA_CENTILE ~ "SGA Centile by INTERGROWTH Standards; mean (SD)",
+      INF_DTH ~ "Neonatal mortality; n (%)"
+    ),
+    missing = "no",
+    statistic = list(
+      all_continuous() ~ "{mean} � {sd}",
+      all_categorical() ~ "{p}%"  # Show percentage only
+    ),
+    digits = list(
+      all_categorical() ~ 1  # 1 decimal place
+    )
+  ) %>%
+  modify_header(
+    label ~ "**Characteristic/Outcome**",
+  ) %>%
+  modify_caption(
+    "**<div align='left'><b>Baseline Characteristics and Perinatal Outcomes in Overall ReMAPP Sample vs. Healthy Cohort**\n \n"
+  ) %>%
+  # Add footnote for SGA
+  modify_footnote_body(
+    footnote = "SGA = Small for Gestational Age",
+    columns = "label",
+    rows = variable == "SGA_CENTILE"
+  ) %>%
+  # Add footnote for MUAC
+  modify_footnote_body(
+    footnote = "MUAC = Mid-upper arm circumference",
+    columns = "label",
+    rows = variable == "MUAC_ENROLL"
+  )
+
+# 1. Save gt table as HTML
+demo_table %>%
+  as_gt() %>%
+  gtsave(paste0("baseline.png"))
+
+# Trim whitespace
+img_base <- image_read("baseline.png") %>%
+  image_trim()
+
+image_write(img_base, path = "baseline_trimmed.png")
+
+```
+```{r basetable, out.width='100%', out.height = '85%'} 
+knitr::include_graphics("baseline_trimmed.png")
+```
+```
+
+# **Description of study data**
+
+## Scatterplot of hemoglobin by gestational age
+
+```{r scatter plot} 
+df_hb_long1 %>% 
+  ggplot(aes(x = ga_wks, y = hb, color = "#eb4c42")) + 
+  geom_point(alpha = 0.3, size = 0.5) +
+  facet_wrap(vars(SITE), nrow=2) +
+  xlab("Gestational Age (weeks)") +
+  ylab("Hemoglobin (g/dL)") +
+  scale_x_continuous(breaks=seq(10,50,5))+
+  scale_color_discrete(guide="none") +
+  theme_bw() +
+  theme(strip.background=element_rect(fill="white")) 
+
+```
+
+
+## Hemoglobin by trimester and site
+
+```{r histogram, out.height = '100%'}
+df_hb_long1 %>% 
+  mutate(
+    TRIMES = case_when(
+      trimester == 1 ~ "Trimester 1",
+      trimester == 2 ~ "Trimester 2",
+      trimester == 3 ~ "Trimester 3",
+    )) %>% 
+  filter(!is.na(TRIMES)) %>% 
+  ggplot(aes(x = hb, fill = ..x..)) +
+  geom_histogram(color = "white", size = 0, 
+                 alpha=1, position="identity", binwidth = 0.5) +
+  scale_x_continuous(breaks=seq(5,18,1))+
+  xlab("Hemoglobin (g/dL)") +
+  ylab("Frequency")+
+  facet_grid(SITE ~ TRIMES, scales="free_y") +
+  theme_bw() +
+ theme(strip.background=element_rect(fill="white"),
+        strip.text = element_text(size = 7), 
+        panel.spacing = unit(0.3, "lines"), 
+        axis.text.x = element_text(angle = 90, vjust = 1, hjust=1),
+        legend.position="right", 
+        legend.title = element_text(size = 7),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 6), 
+        axis.title = element_text(size = 8),
+        legend.key.size = unit(0.3, "cm"),
+        legend.text = element_text(size = 6)) +
+ scale_fill_gradientn(colours = rev(wes_palette("FantasticFox1", 10, type = "continuous")),
+                              name = "HB value")
+
+```
+
+*Note: Trimester1: 0-13 weeks; Trimester2: 14-27 weeks; Trimester3: 28-40 weeks.*
+
+## Histograms of hemoglobin distribution
+
+```{r, out.width='80%'}
+df_hb_long1 %>% 
+  ggplot(aes(x = hb)) +
+  geom_histogram(aes(y=..density..),
+    fill = "white", color = "black",lwd=0.5,
+    alpha=0.5, position="identity", binwidth = 0.5) +
+  geom_density(lwd=0.6, colour="turquoise3", fill="turquoise1", alpha=0.16) +
+  scale_x_continuous(breaks=seq(4,16,1))+
+  xlab("Hemoglobin (g/dL)") +
+  ylab("Density")+
+  facet_grid(rows = vars(SITE), scales="free_y") +
+  theme_bw() +
+  theme(strip.background=element_rect(fill="white")) 
+
+``` 
+
+*Note: The density plot will show whether the distribution is bell shaped or skewed.*
+
+## Test of hemoglobin normality
+
+```{r Shapiro-Wilk test, out.width='39%'} 
+test_hb_normal <- df_hb_long1 %>%
+  group_by(SITE) %>%
+  summarise(Statistic = round(shapiro.test(hb)$statistic, 6),
+            Pvalue = scales::pvalue(shapiro.test(hb)$p.value))
+
+tb4 <- tb_theme3(test_hb_normal) %>% 
+  # table title
+  tab_header(
+    title = paste0("Table 4. Test of Normality of Hemoglobin")
+  ) %>%
+  gtsave(paste0("tb4.png"), expand = 10)
+
+knitr::include_graphics("tb4.png")
+
+```
+
+*Note: A p-value <0.05 will indicate non-normally distributed hemoglobin data. *
+
+## Test of hemoglobin heterogeneity between sites
+
+```{r lme, message=FALSE, warning=FALSE, out.width='50%'}
+library(lme4)
+library(lmerTest)
+# fit linear mixed effects model
+# use site and subject as random effects
+df_hb_long1 <- df_hb_long1 %>% 
+  mutate(sites = as.factor(SITE))
+
+lme_mod <- lmer(hb ~ ga_wks + (1 | sites) + (1 | sites:MOMID), data = df_hb_long1, REML = TRUE)
+
+# obtain variance components
+hb_var <- VarCorr(lme_mod) %>% as.data.frame()
+# calculate the variance proportion
+hb_var_prop <- data.frame(
+  "Variance component" = c("Var(subject within site)", "Var(site)", "Var(error)"),
+  Estimates = hb_var$vcov,
+  "Standard error" = hb_var$sdcor,
+  check.names = FALSE
+) %>%
+  mutate("Proportion(%)" = Estimates / sum(Estimates) * 100) %>%
+  mutate(across(c(2:4), ~ round(.x, 3)))
+
+# print table
+tb5 <- tb_theme3(hb_var_prop) %>% 
+  # table title
+  tab_header(
+    title = paste0("Table 5. Test of hemoglobin heterogeneity between sites")
+  ) %>%
+  gtsave(paste0("tb5.png"), expand = 10)
+
+knitr::include_graphics("tb5.png")
+```
+
+*Note: Heterogeneity in CBC-hemoglobin across sites is first assessed by comparing the percentages of the variance due to inter-subject and inter-site differences estimated by analysis-of-variance techniques. Variance component analysis is based on a liner mixed-effect model, with gestational age treated as fixed effect, and sites and individuals treated as random effects. We will test the significance of site effect in the model. We will compare the percentage of variance due to inter-site and that of inter-individual.*
+
+```{r site effect, out.width='45%'}
+# test site effect
+test_site_effect <- ranova(lme_mod) %>% 
+  as.data.frame() %>% 
+  add_column(c("", "SITE", "SITE:MOMID"), .before = 1) %>%
+  rename_with(~ c("Term", "Npar", "Loglik", "AIC", "LRT", "Df", "Pvalue"), c(1:7)) %>% 
+  mutate(Pvalue = scales::pvalue(Pvalue), 
+         Loglik = format(round(as.numeric(Loglik), 2), big.mark=","),
+         AIC = format(round(as.numeric(AIC), 2), big.mark=","),
+         LRT = as.numeric(format(round(as.numeric(LRT), 2), big.mark=","))) 
+# print table
+tb6 <- tb_theme3(test_site_effect) %>% 
+  # table title
+  tab_header(
+    title = paste0("Table 6. Test the Effect of Site")
+  ) %>%
+  gtsave(paste0("tb6.png"), expand = 10)
+
+knitr::include_graphics("tb6.png")
+```
+
+*We will also check the the significance of site effect. P value < 0.05 will indicate that the site effect cannot be ignored.*
+
+# **Regression model for the study**
+
+We will apply fractional polynomial regression on healthy cohort data. By assuming that the hemoglobin follows a normal distribution $N(\mu(t), \sigma^2(t))$ at given gestational week $(t)$, the fractional polynomial regression (FPR) model fits regression models for both the mean parameter $\mu$ and standard deviation parameter $\sigma$. Then estimate the centiles by using the equation
+$$C_{100\alpha}(t) = \mu(t) + Z_{\alpha}\sigma(t)$$,
+where $C_{100\alpha}(t)$ is the expected hemoglobin centile $100\alpha$ at given gestational week $(t)$, and $Z_{\alpha}$ is the normal equivalent deviate of size $\alpha$.
+
+# **Fractional polynomial regression - Pooled**
+
+Assuming we have normally distributed data and the heterogeneity of CBC-hemoglobin across sites can be ignored,  we pool the CBC-hemoglobin from all sites together, and estimate the 2.5th, 5th, 10th, 50th, 95th and 97.5th centiles of hemoglobin at given gestational weeks during pregnancy and 6-week postpartum. 
+
+```{r}
+# use long format data
+df_fpr <- df_sensitive_long %>% 
+dplyr :: select(SITE, ga_wks, hb, preterm37_mom) %>% 
+  mutate(preterm37_mom = ifelse(!is.na(preterm37_mom), preterm37_mom, 55)) %>%
+  filter(!is.na(hb) & !is.na(ga_wks)) %>% 
+  mutate(range = (max(ga_wks) - min(ga_wks)))
+
+```
+
+
+```{r}
+# call package gamlss to fit FPR model
+library(gamlss)
+
+# fit a second-order FPR model
+con <- gamlss.control(trace = FALSE) 
+
+fpr_fun <- function(data) {
+  gamlss(
+  hb ~ fp(ga_wks, 2),  
+  sigma.fo = ~ fp(ga_wks, 2), 
+  data = data, control = con
+)
+}
+
+fpr_mod_pooled <- fpr_fun(df_fpr)
+```
+
+
+```{r}
+# get model coefficients for mean and sigma
+tb_coef_fun <- function(model) {
+  data.frame(
+  Parameter = c("\U03BC", "\U03C3"), 
+  Intercept1 = c(model$mu.coefficients[[1]], model$sigma.coefficients[[1]]),
+  Intercept2 = c(getSmo(model, what = "mu")$coef[[1]], 
+                 getSmo(model, what = "sigma")$coef[[1]]), 
+  coefficient1 = c(getSmo(model, what = "mu")$coef[[2]], 
+                   getSmo(model, what = "sigma")$coef[[2]]),
+  coefficient2 = c(getSmo(model, what = "mu")$coef[[3]], 
+                   getSmo(model, what = "sigma")$coef[[3]]), 
+  Linkfun = c(model$mu.link, 
+              model$sigma.link))
+}
+
+tb_coef_pooled <- tb_coef_fun(fpr_mod_pooled)
+  
+```
+
+
+```{r}
+# get model polynomial powers for mean and sigma
+tb_power_fun <- function(model) {
+  rbind(
+  getSmo(model, what = "mu")$power,
+  getSmo(model, what = "sigma")$power
+) %>%
+  as.data.frame() %>%
+  add_column(c("\U03BC", "\U03C3"), .before = 1) %>%
+  rename_with(~ c("Parameter", "power1", "power2"), c(1:3))
+} 
+
+tb_power_pooled <- tb_power_fun(fpr_mod_pooled)
+
+```
+
+```{r, results='hide'}
+scale = unique(10*(sign(log10(df_fpr$range)))*trunc(abs(log10(df_fpr$range))))
+tb_coef_pooled
+tb_power_pooled
+```
+<!-- *pooled -->
+The FPR model for $\mu$ and $\sigma$ are
+$$\mu = 10.7113709 + 2.20939109 - 1.83051332(GA/10) + 0.33554028(GA/10)^{2}$$
+and $$log(\sigma) = 0.2386056 + 0.07206012 - 0.03983788(GA/10)^{2} + 0.02760153(GA/10)^{2}log(GA/10)$$
+respectively.
+
+## Centile plots of hemoglobin against gestational weeks
+
+Given the fitted FPR model, we can plot the centile curves of hemoglobin against the gestational weeks. Also add the WHO thresholds to compare with.
+
+### Centile curves using FPR model (2.5, 5, 10, 50, 90, 95, 97.5)th centiles vs WHO threshold
+
+```{r centile plot pooled,  results='hide'}
+# make centile plots based on the fitted FPR model
+par(mar=c(4, 4, 4, 3), 
+    xpd=TRUE, 
+    cex.main = 0.85, 
+    cex.lab = 0.8, 
+    cex.axis = 0.8)
+
+centiles_fun <- function(model, data, title) {
+  centiles(model, 
+  xvar = data$ga_wks, 
+  cent = c(2.5, 5, 10, 50, 90, 95, 97.5),
+  legend = FALSE, 
+  xlab = "Gestational Age (weeks)", ylab = "CBC HB (g/dL)", 
+  main = title,
+  bg = "transparent",
+  xlim = range(6,40),
+  ylim = c(5, 18),
+  pch = 15, 
+  cex = 0.2, 
+  col = "grey86",
+  col.cent = c("red", "blue", "purple", "green", "purple", "blue", "red"),
+  )
+  
+segments(x0 = 6, y0 = 11, x1 = 14, y1 = 11, col="black", lty = 2)
+segments(x0 = 14, y0 = 10.5, x1 = 27, y1 = 10.5, col="black", lty = 2)
+segments(x0 = 27, y0 = 11, x1 = 36, y1 = 11, col="black", lty = 2)
+text(x = 6.5, y = 11.5, "11", col = "black", cex = 0.66)
+text(x = 20.5, y = 11, "10.5", col = "black", cex = 0.66)
+text(x = 34.5, y = 11.5, "11", col = "black", cex = 0.66)
+legend("topright", inset = c(0,0),
+       legend = c(2.5, 5, 10, 50, 90, 95, 97.5, "WHO"), 
+       cex = 0.6,
+       col = c("red", "blue", "purple", "green", "purple", "blue", "red", "black"),
+       lty = c(1,1,1,1,1,1,1,2)) 
+}
+
+centiles_pooled <- centiles_fun(fpr_mod_pooled, df_fpr, "Centile Curves Using FPR Model \n (2.5, 5, 10, 50, 90, 95, 97.5)th Centiles vs WHO Threshold \n Pooled")
+
+```
+
+
+### Smoothed centiles for maternal haemoglobin (in g/L) according to exact gestational age (in weeks)
+
+```{r centile table pooled}
+# make centile tables based on the fitted FPR model
+# Define a sequence of gestational ages
+ga_seq <- seq(12, 40, by = 1)
+
+# Get predicted centiles
+centile_table <- centiles(fpr_mod_pooled, 
+                          xvar = ga_seq,
+                          cent = c(2.5, 5, 10, 50, 90, 95, 97.5), 
+                          plot = FALSE)
+
+# Add gestational age to the table
+centile_table$gest_age <- ga_seq
+
+# Rearrange columns
+centile_table <- centile_table[, c("gest_age", "C2.5", "C5", "C10", "C50", "C90", "C95", "C97.5")]
+
+# View or export the table
+print(centile_table)
+
+```
+
+
+### Diagnostic plot
+We use diagnostic plots to examine if the FPR model is a good fit to the hemoglobin centile curves.
+
+
+```{r, results='hide'}
+df_emp <- df_fpr %>%
+  mutate(ga_wks_floor = floor(ga_wks)) %>%
+  group_by(ga_wks_floor) %>%
+  summarise(cent_2.5 = quantile(hb, probs = c(0.025), na.rm = TRUE),
+            cent_50 = quantile(hb, probs = c(0.50), na.rm = TRUE),
+            cent_97.5 = quantile(hb, probs = c(0.975), na.rm = TRUE)) %>%
+  ungroup()
+
+```
+
+```{r, results='hide'}
+#change font size
+par(cex.main = 0.85, 
+    cex.lab = 0.8, 
+    cex.axis = 0.8)
+
+plot_fpr_emp_fun <- function(model, data, data_emp) {
+  centiles(model,
+  xvar = data$ga_wks, cent = c(2.5, 50, 97.5),
+  xlab = "Gestational age (weeks)", ylab = "Hemoglobin (g/dL)",
+  main = "FPR centiles VS Empirical centiles\n2.5th, 50th, 97.5th centiles",
+  points = FALSE,
+  bg = "transparent", legend = FALSE,
+  col.cent = rep("black", 7)
+  )
+
+points(x = df_emp$ga_wks_floor, y = df_emp$cent_2.5, col = "red")
+points(x = df_emp$ga_wks_floor, y = df_emp$cent_50, col = "blue")
+points(x = df_emp$ga_wks_floor, y = df_emp$cent_97.5, col = "red")
+}
+
+plot_fpr_emp_pooled <- plot_fpr_emp_fun(fpr_mod_pooled, df_fpr, df_emp)
+
+```
+In the “FPR centiles VS Empirical centiles” plot, we will observe if the FPR curves are consistent with empirical curves.
+
+In addition, we use four plots of normalized quantile residuals to check the adequacy of the fitted fractional polynomial regression model. If the residuals display the behavior of following a standard normal distribution, the model is a good fit. The four plots are:
+
+- top left: residuals against the fitted values of the mean parameter.
+
+- top right: residuals against the specified covariate.
+
+- bottom left: a kernel density estimate of the residuals.
+
+- bottom right: a QQ-normal plot of the residuals.
+
+
+```{r}
+newpar <- par(mfrow = c(2, 2), mar = par("mar") + c(0, 1, 0, 0), 
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+              col.lab = "blue4", pch = "+", cex = 0.45, cex.lab = 1.2,
+              cex.axis = 1, cex.main = 1.2)
+
+plot_diag_fun <- function(model, data) {
+ plot(model, xvar = data$ga_wks, par = newpar, summaries = FALSE) 
+}
+
+plot_diag_pooled <- plot_diag_fun(fpr_mod_pooled, df_fpr)
+par(newpar)
+
+```
+The residuals behave well if the top two plots show a random scatter around the horizontal line at 0, and the kernel density estimate of the residuals is approximately normal and the normal QQ-plot is approximately linear. 
+
+## Estimate the centiles at given gestational weeks
+
+We estimate the 2.5th, 50th, and 97.5th centiles at 14, 20, 28, 32, 36 gestational weeks using predictions from the FPR curves. Also compare the predicted hemoglobin value with empirical percentile at each time point.
+
+```{r, results='hide'}
+#calculate mean column
+tb_emp <- df_sensitive_long %>%
+  mutate(ga_wks_floor = floor(ga_wks)) %>%
+  group_by(ga_wks_floor) %>%
+  summarise(
+    cent_2.5 = quantile(hb, probs = c(0.025), na.rm = TRUE),
+    cent_50 = quantile(hb, probs = c(0.50), na.rm = TRUE),
+    cent_97.5 = quantile(hb, probs = c(0.975), na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  filter(ga_wks_floor %in% c(12, 14, 20, 28, 32, 36))
+
+# centiles at 14, 20, 28, 32, 36 gestational weeks predicted by FPR model
+tb_pred_fun <- function(model, data, pred_emp) {
+  centiles.pred(model, data = data,
+  xname = "ga_wks", xvalues = c(12, 14, 20, 28, 32, 36), 
+  type = c("centiles"), cent = c(2.5, 50, 97.5)
+) %>%
+#add percitile column
+  bind_cols(pred_emp) %>%
+  round(3) %>%
+  as.data.frame() %>%
+  dplyr::select("ga_wks_floor", "2.5", "cent_2.5", "50", "cent_50", "97.5", "cent_97.5") %>%
+  rename_with(~ c("GA", "FPR-2.5", "Empir-2.5","FPR-50", "Empir-50","FPR-97.5", "Empir-97.5"))
+}
+tb_pred_pooled <- tb_pred_fun(fpr_mod_pooled, df_fpr, tb_emp)
+
+```
+
+```{r FPR predicted centiles, out.width='60%'}
+tb7 <- tb_theme3(tb_pred_pooled) %>% 
+  # table title
+  tab_header(
+    title = paste0("Table 7. FPR predicted centiles & Empirical precentile - Pooled")
+  ) %>%
+  gtsave(paste0("tb7.png"), expand = 10)
+
+knitr::include_graphics("tb7.png")
+
+```
+
+## Sensitivity analysis
+
+### Sensitivity analysis by excluding the subgroup of subjects with adverse oucomes.
+
+In order to see if participants with adverse outcome has different hemoglobin distribution, we will compare sample under each subsample \textcolor{red}{(red line)} with all enrolled (black line).
+We need discuss more subgroups.
+
+- Sensitivity analysis by excluding the subgroup of subjects with preterm delivery
+
+```{r , results='hide', fig.align='center', out.width='60%'}
+# centiles
+cents <- c(2.5, 50, 97.5)
+
+# # a function to plot centile curves after excluding certain site
+fpr_mod_sensitive_fun <- function(data, model, s){
+  # remove the selected group data
+  dat <- data %>% filter(eval(parse(text = paste0(s,"!= 1"))))
+  # fit a FPR model on the rest data
+  mod <- gamlss(hb ~ fp(ga_wks, 2, shift = 0, scale = 1),
+                sigma.fo = ~ fp(ga_wks, 2, shift = 0, scale = 1),
+                data = dat, control = con)
+
+  x <- data$ga_wks
+  # predict hemoglobin centiles by FPR model fitted on all data
+  y_fpr_mod <- centiles.pred(model,
+                         xname = "ga_wks", xvalues = x,
+                         type = c("centiles"), cent = cents, data = data)
+  # predict hemoglobin centiles by FPR model fitted on all data excluding the site
+  y_mod <- centiles.pred(mod,
+                         xname = "ga_wks", xvalues = x,
+                         type = c("centiles"), cent = cents, data = dat)
+
+  # compare the centile curves
+  plot(y_fpr_mod[,1], y_fpr_mod[,2],
+       ylim = c(5, 18),
+       type="n",
+       xlab = "Gestational week", ylab = "Hemoglobin (g/dL)",
+       main = paste0("Excluding ", s))
+
+  for(i in 2:(length(cents)+1)) {
+    lines(y_fpr_mod[,1], y_fpr_mod[,i], col = "black", lty = "longdash")
+    lines(y_mod[,1], y_mod[,i], col = "red")
+  }
+}
+
+fpr_mod_sensitive_pooled <- fpr_mod_sensitive_fun(df_fpr, fpr_mod_pooled, "preterm37_mom")
+
+newpar <- par(mfrow = c(1,1), mar = par("mar") + c(0, 1, 0, 0),
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+              col.lab = "blue4", pch = "+", cex = 0.45, cex.lab = 2,
+              cex.axis = 2, cex.main = 2)
+par(newpar)
+```
+Check whether the centile plots are sensitive to removing the group with preterm delivery.
+
+### Sensitivity analysis by excluding one site at a time
+
+Compare sample by excluding one site at a time \textcolor{red}{(red line)} with pooled (black line).
+
+```{r , fig.show="hold", results='hide'}
+# sites id
+sites <- as.character(c(1:5))
+# centiles
+cents <- c(2.5, 50, 97.5)
+
+# a function to plot centile curves after excluding certain site
+fpr_mod_site <- function(s){
+
+  # remove the selected site data
+  dat <- df_fpr %>% filter(SITE != s)
+  # fit a FPR model on the rest data
+  mod <- gamlss(hb ~ fp(ga_wks, 2, shift = 0, scale = 1),
+                sigma.fo = ~ fp(ga_wks, 2, shift = 0, scale = 1),
+                data = dat, control = con)
+
+  x <- df_fpr$ga_wks
+  # predict hemoglobin centiles by FPR model fitted on all data
+  y_fpr_mod <- centiles.pred(fpr_mod_pooled,
+                         xname = "ga_wks", xvalues = x,
+                         type = c("centiles"), cent = cents, data = df_fpr)
+  # predict hemoglobin centiles by FPR model fitted on all data excluding the site
+  y_mod <- centiles.pred(mod,
+                         xname = "ga_wks", xvalues = x,
+                         type = c("centiles"), cent = cents, data = dat)
+
+  # compare the centile curves
+  plot(y_fpr_mod[,1], y_fpr_mod[,2],
+
+       ylim = c(5, 18),
+
+       type="n",
+
+       xlab = "Gestational week", ylab = "Hemoglobin (g/dL)",
+
+       main = paste0("Excluding ", s, "\n (2.5, 50, 97.5)th Centiles"))
+
+  for(i in 2:(length(cents)+1)) {
+    lines(y_fpr_mod[,1], y_fpr_mod[,i], col = "black", lty = "longdash")
+    lines(y_mod[,1], y_mod[,i], col = "red")
+  }
+}
+
+newpar <- par(mfrow = c(3, 2), 
+              mar = par("mar") + c(0, 1, 0, 0),
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+              col.lab = "blue4", pch = "+", cex = 0.45, cex.lab = 1.2,
+              cex.axis = 1, cex.main = 1.2)
+# remove site 1
+fpr_mod_site("Pakistan")
+# remove site 2
+fpr_mod_site("Kenya")
+# remove site 3
+fpr_mod_site("Ghana")
+# remove site 4
+fpr_mod_site("Zambia")
+# # remove site 5
+fpr_mod_site("India-CMC")
+# # remove site 6
+fpr_mod_site("India-SAS")
+
+par(newpar)
+```
+Check whether the centile plots are sensitive to removing one site at a time.
+
+# **Fractional polynomial regression - Pakistan**
+
+Assuming we have normally distributed data and the heterogeneity of CBC-hemoglobin across sites cannot be ignored, we will do site specific analysis. We will use Pakistan data in this section and estimate the 2.5th, 5th, 10th, 50th, 95th and 97.5th centiles of hemoglobin at given gestational weeks during pregnancy and 6-week postpartum.
+
+
+```{r}
+# use long format data
+df_fpr_pa <- df_fpr %>%
+  filter(SITE == "Pakistan") %>%
+  mutate(range = (max(ga_wks) - min(ga_wks)))
+
+# fit a second-order FPR model
+fpr_mod_pa <- fpr_fun(df_fpr_pa)
+```
+
+
+```{r}
+# get model coefficients for mean and sigma
+tb_coef_pa <- tb_coef_fun(fpr_mod_pa)
+# get model polynomial powers for mean and sigma
+tb_power_pa <- tb_power_fun(fpr_mod_pa)
+
+```
+
+```{r, results='hide'}
+scale_pa = unique(10*(sign(log10(df_fpr_pa$range)))*trunc(abs(log10(df_fpr_pa$range))))
+tb_coef_pa
+tb_power_pa
+
+```
+
+<!-- *pakistan -->
+The FPR model for $\mu$ and $\sigma$ are
+$$\mu = 10.9536555 + 1.4449204 - 0.75360485(GA/10)^{2} + 0.5105301(GA/10)^{2}log(GA/10)$$
+and $$log(\sigma) = 0.2368345 - 0.0465253 + 0.06017977(GA/10)^{-2} + 0.2584217(GA/10)^{-2}log(GA/10)$$
+respectively.
+
+## Centile plots of hemoglobin against gestational weeks
+
+Given the fitted FPR model, we can plot the centile curves of hemoglobin against the gestational weeks. Also add the WHO thresholds to compare with.
+
+### Centile curves using FPR model (2.5, 5, 10, 50, 90, 95, 97.5)th centiles vs WHO threshold
+
+```{r centile plot Pakistan,  results='hide'}
+# make centile plots based on the fitted FPR model
+par(mar=c(4, 4, 4, 3), 
+    xpd=TRUE, 
+    cex.main = 0.85, 
+    cex.lab = 0.8, 
+    cex.axis = 0.8)
+
+centiles_pa <- centiles_fun(fpr_mod_pa, df_fpr_pa, "Centile Curves Using FPR Model \n (2.5, 5, 10, 50, 90, 95, 97.5)th Centiles vs WHO Threshold \n Pakistan")
+
+```
+
+
+### Diagnostic plot
+We use diagnostic plots to examine if the FPR model is a good fit to the hemoglobin centile curves.
+
+```{r, results='hide'}
+df_emp_pa <- df_fpr_pa %>%
+  mutate(ga_wks_floor = floor(ga_wks)) %>%
+  group_by(ga_wks_floor) %>%
+  summarise(cent_2.5 = quantile(hb, probs = c(0.025), na.rm = TRUE),
+            cent_50 = quantile(hb, probs = c(0.50), na.rm = TRUE),
+            cent_97.5 = quantile(hb, probs = c(0.975), na.rm = TRUE)) %>%
+  ungroup()
+```
+
+```{r, results='hide'}
+par(cex.main = 0.85, 
+    cex.lab = 0.8, 
+    cex.axis = 0.8)
+
+plot_fpr_emp_pa <- plot_fpr_emp_fun(fpr_mod_pa, df_fpr_pa, df_emp_pa)
+
+points(x = df_emp_pa$ga_wks_floor, y = df_emp_pa$cent_2.5, col = "red")
+
+points(x = df_emp_pa$ga_wks_floor, y = df_emp_pa$cent_50, col = "blue")
+
+points(x = df_emp_pa$ga_wks_floor, y = df_emp_pa$cent_97.5, col = "red")
+```
+
+In the “FPR centiles VS Empirical centiles” plot, we will observe if the FPR curves are consistent with empirical curves.
+
+In addition, we use four plots of normalized quantile residuals to check the adequacy of the fitted fractional polynomial regression model. If the residuals display the behavior of following a standard normal distribution, the model is a good fit. The four plots are:
+
+- top left: residuals against the fitted values of the mean parameter.
+
+- top right: residuals against the specified covariate.
+
+- bottom left: a kernel density estimate of the residuals.
+
+- bottom right: a QQ-normal plot of the residuals.
+
+```{r}
+newpar <- par(mfrow = c(2, 2), mar = par("mar") + c(0, 1, 0, 0), 
+
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+
+              col.lab = "blue4", pch = "+", cex = 0.45, cex.lab = 1.2,
+
+              cex.axis = 1, cex.main = 1.2)
+
+plot_diag_pa <- plot_diag_fun(fpr_mod_pa, df_fpr_pa)
+
+par(newpar)
+
+```
+
+The residuals behave well if the top two plots show a random scatter around the horizontal line at 0, and the kernel density estimate of the residuals is approximately normal and the normal QQ-plot is approximately linear.
+
+## Estimate the centiles at given gestational weeks
+
+We estimate the 2.5th, 50th, and 97.5th centiles at 14, 20, 28, 32, 36 gestational weeks using predictions from the FPR curves. Also compare the predicted hemoglobin value with empirical percentile at each time point.
+
+```{r, results='hide'}
+#calculate mean column
+tb_emp_pa <- df_sensitive_long %>%
+  filter(SITE == "Pakistan") %>%
+  mutate(ga_wks_floor = floor(ga_wks)) %>%
+  group_by(ga_wks_floor) %>%
+  summarise(
+    cent_2.5 = quantile(hb, probs = c(0.025), na.rm = TRUE),
+    cent_50 = quantile(hb, probs = c(0.50), na.rm = TRUE),
+    cent_97.5 = quantile(hb, probs = c(0.975), na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  filter(ga_wks_floor %in% c(12, 14, 20, 28, 32, 36))
+
+# centiles at 14, 20, 28, 32, 36 gestational weeks predicted by FPR model
+tb_pred_pa <- tb_pred_fun(fpr_mod_pa, df_fpr_pa, tb_emp_pa)
+
+```
+
+```{r FPR predicted centiles-Pakistan, out.width='60%'}
+tb8 <- tb_theme3(tb_pred_pa) %>% 
+  # table title
+  tab_header(
+    title = paste0("Table 8. FPR predicted centiles & Empirical precentile - Pakistan")
+  ) %>%
+  gtsave(paste0("tb8.png"), expand = 10)
+
+knitr::include_graphics("tb8.png")
+
+```
+
+## Sensitivity analysis
+
+### Sensitivity analysis by excluding the subgroup of subjects with adverse oucomes.
+
+Compare sample under each subsample \textcolor{red}{(red line)} with all enrolled (black line).
+
+- Sensitivity analysis by excluding the subgroup of subjects with preterm delivery
+
+```{r , results='hide', fig.align='center', out.width='60%'}
+cents <- c(2.5, 50, 97.5)
+
+fpr_mod_sensitive_pa <- fpr_mod_sensitive_fun(df_fpr_pa, fpr_mod_pa, "preterm37_mom")
+
+newpar <- par(mfrow = c(1,1), mar = par("mar") + c(0, 1, 0, 0),
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+              col.lab = "blue4", pch = "+", cex = 0.45, cex.lab = 2,
+              cex.axis = 2, cex.main = 2)
+
+par(newpar)
+```
+
+Check whether the centile plots are sensitive to removing the group with preterm delivery.
+
+# **Fractional polynomial regression - Kenya**
+
+Assuming we have normally distributed data and the heterogeneity of CBC-hemoglobin across sites cannot be ignored, we will do site specific analysis. We will use Kenya data in this section and estimate the 2.5th, 5th, 10th, 50th, 95th and 97.5th centiles of hemoglobin at given gestational weeks during pregnancy and 6-week postpartum.
+
+
+```{r}
+# use long format data
+df_fpr_ke <- df_fpr %>%
+  filter(SITE == "Kenya") %>%
+  mutate(range = (max(ga_wks) - min(ga_wks)))
+#fit the model
+fpr_mod_ke <- fpr_fun(df_fpr_ke)
+```
+
+
+```{r}
+#coef
+tb_coef_ke <- tb_coef_fun(fpr_mod_ke)
+#power
+tb_power_ke <- tb_power_fun(fpr_mod_ke)
+
+```
+
+```{r, results='hide'}
+scale_ke = unique(10*(sign(log10(df_fpr_ke$range)))*trunc(abs(log10(df_fpr_ke$range))))
+tb_coef_ke
+tb_power_ke
+
+```
+<!-- *kenya -->
+The FPR model for $\mu$ and $\sigma$ are
+$$\mu = 10.4276666 + 2.0555622 - 1.66938838(GA/10) + 0.29597244(GA/10)^{2}$$
+and $$\sigma = 0.2085309 + 0.1891124 - 0.04334507(GA/10)^{3} + 0.02963553(GA/10)^{3}log(GA/10)$$
+respectively.
+
+## Centile plots of hemoglobin against gestational weeks
+
+Given the fitted FPR model, we can plot the centile curves of hemoglobin against the gestational weeks. Also add the WHO thresholds to compare with.
+
+
+### Centile curves using FPR model (2.5, 5, 10, 50, 90, 95, 97.5)th centiles vs WHO threshold
+
+```{r centile plot Kenya,  results='hide'}
+# make centile plots based on the fitted FPR model
+par(mar=c(4, 4, 4, 3), 
+    xpd=TRUE, 
+    cex.main = 0.85, 
+    cex.lab = 0.8, 
+    cex.axis = 0.8)
+
+centiles_ke <- centiles_fun(fpr_mod_ke, df_fpr_ke, "Centile Curves Using FPR Model \n (2.5, 5, 10, 50, 90, 95, 97.5)th Centiles vs WHO Threshold \n Kenya")
+
+```
+
+
+### Diagnostic plot
+We use diagnostic plots to examine if the FPR model is a good fit to the hemoglobin centile curves.
+
+
+```{r, results='hide'}
+df_emp_ke <- df_fpr_ke %>%
+
+  mutate(ga_wks_floor = floor(ga_wks)) %>%
+
+  group_by(ga_wks_floor) %>%
+
+  summarise(cent_2.5 = quantile(hb, probs = c(0.025), na.rm = TRUE),
+
+            cent_50 = quantile(hb, probs = c(0.50), na.rm = TRUE),
+
+            cent_97.5 = quantile(hb, probs = c(0.975), na.rm = TRUE)) %>%
+
+  ungroup()
+```
+
+```{r, results='hide'}
+#change font size
+par(cex.main = 0.85, 
+    cex.lab = 0.8, 
+    cex.axis = 0.8)
+
+plot_fpr_emp_ke <- plot_fpr_emp_fun(fpr_mod_ke, df_fpr_ke, df_emp_ke)
+points(x = df_emp_ke$ga_wks_floor, y = df_emp_ke$cent_2.5, col = "red")
+
+points(x = df_emp_ke$ga_wks_floor, y = df_emp_ke$cent_50, col = "blue")
+
+points(x = df_emp_ke$ga_wks_floor, y = df_emp_ke$cent_97.5, col = "red")
+```
+
+In the “FPR centiles VS Empirical centiles” plot, we will observe if the FPR curves are consistent with empirical curves.
+
+In addition, we use four plots of normalized quantile residuals to check the adequacy of the fitted fractional polynomial regression model. If the residuals display the behavior of following a standard normal distribution, the model is a good fit. The four plots are:
+
+- top left: residuals against the fitted values of the mean parameter.
+
+- top right: residuals against the specified covariate.
+
+- bottom left: a kernel density estimate of the residuals.
+
+- bottom right: a QQ-normal plot of the residuals.
+
+```{r}
+newpar <- par(mfrow = c(2, 2), mar = par("mar") + c(0, 1, 0, 0), 
+
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+
+              col.lab = "blue4", pch = "+", cex = 0.45, cex.lab = 1.2,
+
+              cex.axis = 1, cex.main = 1.2)
+
+plot_diag_ke <- plot_diag_fun(fpr_mod_ke, df_fpr_ke)
+
+par(newpar)
+
+```
+
+The residuals behave well if the top two plots show a random scatter around the horizontal line at 0, and the kernel density estimate of the residuals is approximately normal and the normal QQ-plot is approximately linear.
+
+## Estimate the centiles at given gestational weeks
+
+We estimate the 2.5th, 50th, and 97.5th centiles at 14, 20, 28, 32, 36 gestational weeks using predictions from the FPR curves. Also compare the predicted hemoglobin value with empirical percentile at each time point.
+
+```{r, results='hide'}
+#calculate percentile columns
+tb_emp_ke <- df_sensitive_long %>%
+  filter(SITE == "Kenya") %>%
+  mutate(ga_wks_floor = floor(ga_wks)) %>%
+  group_by(ga_wks_floor) %>%
+  summarise(
+    cent_2.5 = quantile(hb, probs = c(0.025), na.rm = TRUE),
+    cent_50 = quantile(hb, probs = c(0.50), na.rm = TRUE),
+    cent_97.5 = quantile(hb, probs = c(0.975), na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  filter(ga_wks_floor %in% c(12, 14, 20, 28, 32, 36)) %>%
+  arrange(ga_wks_floor)
+
+tb_pred_ke <- tb_pred_fun(fpr_mod_ke, df_fpr_ke, tb_emp_ke)
+
+```
+
+```{r FPR predicted centiles & actual mean-Kenya, out.width='60%'}
+tb9 <- tb_theme3(tb_pred_ke) %>% 
+  # table title
+  tab_header(
+    title = paste0("Table 9. FPR predicted centiles & Empirical precentile - Kenya")
+  ) %>%
+  gtsave(paste0("tb9.png"), expand = 10)
+
+knitr::include_graphics("tb9.png")
+
+```
+*Note: No 32 gestational week data for Kenya. ANC-32 visit happened at or after 33 gestational week.*
+
+## Sensitivity analysis
+
+### Sensitivity analysis by excluding the subgroup of subjects with adverse oucomes.
+
+Compare sample under each subsample \textcolor{red}{(red line)} with all enrolled (black line).
+
+
+- Sensitivity analysis by excluding the subgroup of subjects with preterm delivery
+
+```{r , results='hide', fig.align='center', out.width='60%'}
+# centiles
+cents <- c(2.5, 50, 97.5)
+
+fpr_mod_sensitive_ke <- fpr_mod_sensitive_fun(df_fpr_ke, fpr_mod_ke, "preterm37_mom")
+
+newpar <- par(mfrow = c(1,1), mar = par("mar") + c(0, 1, 0, 0),
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+              col.lab = "blue4", pch = "+", cex = 0.45, cex.lab = 2,
+              cex.axis = 2, cex.main = 2)
+
+par(newpar)
+```
+
+Check whether the centile plots are sensitive to removing the group with preterm delivery.
+
+# **Fractional polynomial regression - Ghana**
+
+Assuming we have normally distributed data and the heterogeneity of CBC-hemoglobin across sites cannot be ignored, we will do site specific analysis. We will use Ghana data in this section and estimate the 2.5th, 5th, 10th, 50th, 95th and 97.5th centiles of hemoglobin at given gestational weeks during pregnancy and 6-week postpartum.
+
+```{r}
+# use long format data
+df_fpr_gh <- df_fpr %>%
+  filter(SITE == "Ghana") %>%
+  mutate(range = (max(ga_wks) - min(ga_wks)))
+#fit model
+fpr_mod_gh <- fpr_fun(df_fpr_gh)
+```
+
+
+```{r}
+# get model coefficients for mean and sigma
+tb_coef_gh <- tb_coef_fun(fpr_mod_gh)
+tb_power_gh <- tb_power_fun(fpr_mod_gh)
+
+```
+
+
+```{r, results='hide'}
+scale_gh = unique(10*(sign(log10(df_fpr_gh$range)))*trunc(abs(log10(df_fpr_gh$range))))
+tb_coef_gh
+tb_power_gh
+
+```
+
+<!-- *ghana -->
+The FPR model for $\mu$ and $\sigma$ are
+$$\mu = 10.4470733 + 6.9103503 - 8.5317526(GA/10)^{0.5} + 2.5440287(GA/10)$$
+and $$log(\sigma) = 0.1404536 + 0.1794717 - 0.3228972(GA/10)^{-2} - 0.7546436(GA/10)^{-2}log(GA/10)$$
+respectively.
+
+## Centile plots of hemoglobin against gestational weeks
+
+Given the fitted FPR model, we can plot the centile curves of hemoglobin against the gestational weeks. Also add the WHO thresholds to compare with.
+
+### Centile curves using FPR model (2.5, 5, 10, 50, 90, 95, 97.5)th centiles vs WHO threshold
+
+```{r centile plot Ghana,  results='hide'}
+# make centile plots based on the fitted FPR model
+par(mar=c(4, 4, 5, 3), 
+    xpd=TRUE, 
+    cex.main = 0.85, 
+    cex.lab = 0.8, 
+    cex.axis = 0.8)
+
+centiles_gh <- centiles_fun(fpr_mod_gh, df_fpr_gh, "Centile Curves Using FPR Model \n (2.5, 5, 10, 50, 90, 95, 97.5)th Centiles vs WHO Threshold \n Ghana")
+
+```
+
+
+### Diagnostic plot
+We use diagnostic plots to examine if the FPR model is a good fit to the hemoglobin centile curves.
+
+
+```{r, results='hide'}
+df_emp_gh <- df_fpr_gh %>%
+
+  mutate(ga_wks_floor = floor(ga_wks)) %>%
+
+  group_by(ga_wks_floor) %>%
+
+  summarise(cent_2.5 = quantile(hb, probs = c(0.025), na.rm = TRUE),
+
+            cent_50 = quantile(hb, probs = c(0.50), na.rm = TRUE),
+
+            cent_97.5 = quantile(hb, probs = c(0.975), na.rm = TRUE)) %>%
+
+  ungroup()
+```
+
+```{r, results='hide'}
+par(cex.main = 0.85, 
+    cex.lab = 0.8, 
+    cex.axis = 0.8)
+
+plot_fpr_emp_gh <- plot_fpr_emp_fun(fpr_mod_gh, df_fpr_gh, df_emp_gh)
+points(x = df_emp_gh$ga_wks_floor, y = df_emp_gh$cent_2.5, col = "red")
+
+points(x = df_emp_gh$ga_wks_floor, y = df_emp_gh$cent_50, col = "blue")
+
+points(x = df_emp_gh$ga_wks_floor, y = df_emp_gh$cent_97.5, col = "red")
+```
+
+In the “FPR centiles VS Empirical centiles” plot, we will observe if the FPR curves are consistent with empirical curves.
+
+In addition, we use four plots of normalized quantile residuals to check the adequacy of the fitted fractional polynomial regression model. If the residuals display the behavior of following a standard normal distribution, the model is a good fit. The four plots are:
+
+- top left: residuals against the fitted values of the mean parameter.
+
+- top right: residuals against the specified covariate.
+
+- bottom left: a kernel density estimate of the residuals.
+
+- bottom right: a QQ-normal plot of the residuals.
+
+```{r}
+newpar <- par(mfrow = c(2, 2), mar = par("mar") + c(0, 1, 0, 0), 
+
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+
+              col.lab = "blue4", pch = "+", cex = 0.45, cex.lab = 1.2,
+
+              cex.axis = 1, cex.main = 1.2)
+
+plot_diag_gh <- plot_diag_fun(fpr_mod_gh, df_fpr_gh)
+par(newpar)
+
+```
+
+The residuals behave well if the top two plots show a random scatter around the horizontal line at 0, and the kernel density estimate of the residuals is approximately normal and the normal QQ-plot is approximately linear.
+
+## Estimate the centiles at given gestational weeks
+
+We estimate the 2.5th, 50th, and 97.5th centiles at 14, 20, 28, 32, 36 gestational weeks using predictions from the FPR curves. Also compare the predicted hemoglobin value with empirical percentile at each time point.
+
+```{r, results='hide'}
+#calculate mean column
+tb_emp_gh <- df_sensitive_long %>%
+  filter(SITE == "Ghana") %>%
+  mutate(ga_wks_floor = floor(ga_wks)) %>%
+  group_by(ga_wks_floor) %>%
+  summarise(
+    cent_2.5 = quantile(hb, probs = c(0.025), na.rm = TRUE),
+    cent_50 = quantile(hb, probs = c(0.50), na.rm = TRUE),
+    cent_97.5 = quantile(hb, probs = c(0.975), na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  filter(ga_wks_floor %in% c(12, 14, 20, 28, 32, 36))
+
+# centiles at 14, 20, 28, 32, 36 gestational weeks predicted by FPR model
+tb_pred_gh <- tb_pred_fun(fpr_mod_gh, df_fpr_gh, tb_emp_gh)
+
+```
+
+```{r FPR predicted centiles-Ghana, out.width='60%'}
+tb10 <- tb_theme3(tb_pred_gh) %>% 
+  # table title
+  tab_header(
+    title = paste0("Table 10. FPR predicted centiles & Empirical precentile - Ghana")
+  ) %>%
+  gtsave(paste0("tb10.png"), expand = 10)
+
+knitr::include_graphics("tb10.png")
+
+```
+
+## Sensitivity analysis
+
+### Sensitivity analysis by excluding the subgroup of subjects with adverse oucomes.
+
+Compare sample under each subsample \textcolor{red}{(red line)} with all enrolled (black line).
+
+- Sensitivity analysis by excluding the subgroup of subjects with preterm delivery
+
+```{r , results='hide', fig.align='center', out.width='60%'}
+# centiles
+cents <- c(2.5, 50, 97.5)
+
+# a function to plot centile curves after excluding certain site
+fpr_mod_sensitive_gh <- fpr_mod_sensitive_fun(df_fpr_gh, fpr_mod_gh, "preterm37_mom")
+
+
+newpar <- par(mfrow = c(1,1), mar = par("mar") + c(0, 1, 0, 0),
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+              col.lab = "blue4", pch = "+", cex = 0.45, cex.lab = 2,
+              cex.axis = 2, cex.main = 2)
+
+par(newpar)
+```
+
+Check whether the centile plots are sensitive to removing the group with preterm delivery.
+
+# **Fractional polynomial regression - Zambia**
+
+Assuming we have normally distributed data and the heterogeneity of CBC-hemoglobin across sites cannot be ignored, we will do site specific analysis. We will use Zambia data in this section and estimate the 2.5th, 5th, 10th, 50th, 95th and 97.5th centiles of hemoglobin at given gestational weeks during pregnancy and 6-week postpartum.
+
+
+```{r, fpr zambia}
+# use long format data
+df_fpr_za <- df_fpr %>%
+  filter(SITE == "Zambia") %>%
+  mutate(range = (max(ga_wks) - min(ga_wks)))
+#fit model
+fpr_mod_za <- fpr_fun(df_fpr_za)
+```
+
+
+```{r}
+# get model coefficients for mean and sigma
+tb_coef_za <- tb_coef_fun(fpr_mod_za)
+tb_power_za <- tb_power_fun(fpr_mod_za)
+
+```
+
+```{r, results='hide'}
+scale_za = unique(10*(sign(log10(df_fpr_za$range)))*trunc(abs(log10(df_fpr_za$range))))
+tb_coef_za
+tb_power_za
+
+```
+
+<!-- *zambia -->
+The FPR model for $\mu$ and $\sigma$ are
+$$\mu = 11.1138539 + 1.1919510 - 0.6064498(GA/10)^{2} + 0.3984395(GA/10)^{2}log(GA/10)$$
+and $$log(\sigma) = 0.2936178 + 0.0175724 + 0.3880845(GA/10)^{-2} - 0.2931737(GA/10)^{-1}$$
+respectively.
+
+## Centile plots of hemoglobin against gestational weeks 
+
+Given the fitted FPR model, we can plot the centile curves of hemoglobin against the gestational weeks. Also add the WHO thresholds to compare with.
+
+### Centile curves using FPR model (2.5, 5, 10, 50, 90, 95, 97.5)th centiles vs WHO threshold
+
+```{r, results='hide'}
+# make centile plots based on the fitted FPR model
+par(mar=c(4, 4, 4, 3), 
+    xpd=TRUE,
+    cex.main = 0.85, 
+    cex.lab = 0.8, 
+    cex.axis = 0.8)
+
+centiles_za <- centiles_fun(fpr_mod_za, df_fpr_za, "Centile Curves Using FPR Model \n (2.5, 5, 10, 50, 90, 95, 97.5)th Centiles vs WHO Threshold \n Zambia")
+
+```
+
+
+### Diagnostic plot
+We use diagnostic plots to examine if the FPR model is a good fit to the hemoglobin centile curves.
+
+```{r, results='hide'}
+df_emp_za <- df_fpr_za %>%
+
+  mutate(ga_wks_floor = floor(ga_wks)) %>%
+
+  group_by(ga_wks_floor) %>%
+
+  summarise(cent_2.5 = quantile(hb, probs = c(0.025), na.rm = TRUE),
+
+            cent_50 = quantile(hb, probs = c(0.50), na.rm = TRUE),
+
+            cent_97.5 = quantile(hb, probs = c(0.975), na.rm = TRUE)) %>%
+
+  ungroup()
+```
+
+```{r, results='hide'}
+#change font size
+par(cex.main = 0.85, 
+    cex.lab = 0.8,
+    cex.axis = 0.8)
+
+plot_fpr_emp_za <- plot_fpr_emp_fun(fpr_mod_za, df_fpr_za, df_emp_za)
+points(x = df_emp_za$ga_wks_floor, y = df_emp_za$cent_2.5, col = "red")
+
+points(x = df_emp_za$ga_wks_floor, y = df_emp_za$cent_50, col = "blue")
+
+points(x = df_emp_za$ga_wks_floor, y = df_emp_za$cent_97.5, col = "red")
+```
+
+In the “FPR centiles VS Empirical centiles” plot, we will observe if the FPR curves are consistent with empirical curves.
+
+In addition, we use four plots of normalized quantile residuals to check the adequacy of the fitted fractional polynomial regression model. If the residuals display the behavior of following a standard normal distribution, the model is a good fit. The four plots are:
+
+- top left: residuals against the fitted values of the mean parameter.
+
+- top right: residuals against the specified covariate.
+
+- bottom left: a kernel density estimate of the residuals.
+
+- bottom right: a QQ-normal plot of the residuals.
+
+```{r}
+newpar <- par(mfrow = c(2, 2), mar = par("mar") + c(0, 1, 0, 0),
+
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+
+              col.lab = "blue4", pch = "+", cex = 0.45, cex.lab = 1.2,
+
+              cex.axis = 1, cex.main = 1.2)
+
+plot_diag_za <- plot_diag_fun(fpr_mod_za, df_fpr_za)
+par(newpar)
+
+```
+
+The residuals behave well if the top two plots show a random scatter around the horizontal line at 0, and the kernel density estimate of the residuals is approximately normal and the normal QQ-plot is approximately linear.
+
+## Estimate the centiles at given gestational weeks
+
+We estimate the 2.5th, 50th, and 97.5th centiles at 14, 20, 28, 32, 36 gestational weeks using predictions from the FPR curves. Also compare the predicted hemoglobin value with empirical percentile at each time point.
+
+```{r emptable zambia, results='hide'}
+#calculate mean column
+tb_emp_za <- df_sensitive_long %>%
+  filter(SITE == "Zambia") %>%
+  mutate(ga_wks_floor = floor(ga_wks)) %>%
+  group_by(ga_wks_floor) %>%
+  summarise(
+    cent_2.5 = quantile(hb, probs = c(0.025), na.rm = TRUE),
+    cent_50 = quantile(hb, probs = c(0.50), na.rm = TRUE),
+    cent_97.5 = quantile(hb, probs = c(0.975), na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  filter(ga_wks_floor %in% c(12, 14, 20, 28, 32, 36)) %>%
+  add_row(ga_wks_floor = 32, cent_2.5 = NA, cent_50 = NA, cent_97.5 = NA) %>% #!!! temp solution for no data at 32 wks 
+  arrange(ga_wks_floor)
+
+tb_pred_za <- tb_pred_fun(fpr_mod_za, df_fpr_za, tb_emp_za)
+
+```
+
+```{r, out.width='60%'}
+tb11 <- tb_theme3(tb_pred_za) %>% 
+  # table title
+  tab_header(
+    title = paste0("Table 11. FPR predicted centiles & Empirical precentile - Zambia")
+  ) %>%
+  gtsave(paste0("tb11.png"), expand = 10)
+
+knitr::include_graphics("tb11.png")
+
+```
+*Note: No 32 gestational week data for Zambia. ANC-32 visit happened at or after 33 gestational week.*
+
+## Sensitivity analysis
+
+### Sensitivity analysis by excluding the subgroup of subjects with adverse oucomes.
+
+Compare sample under each subsample \textcolor{red}{(red line)} with all enrolled (black line).
+
+- Sensitivity analysis by excluding the subgroup of subjects with preterm delivery
+
+```{r , results='hide', fig.align='center', out.width='60%'}
+# centiles
+cents <- c(2.5, 50, 97.5)
+
+fpr_mod_sensitive_za <- fpr_mod_sensitive_fun(df_fpr_za, fpr_mod_za, "preterm37_mom")
+
+newpar <- par(mfrow = c(1,1), mar = par("mar") + c(0, 1, 0, 0),
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+              col.lab = "blue4", pch = "+", cex = 0.45, cex.lab = 2,
+              cex.axis = 2, cex.main = 2)
+
+par(newpar)
+```
+
+Check whether the centile plots are sensitive to removing the group with preterm delivery.
+
+# **Fractional polynomial regression - India-CMC**
+
+Assuming we have normally distributed data and the heterogeneity of CBC-hemoglobin across sites cannot be ignored, we will do site specific analysis. We will use India-CMC data in this section and estimate the 2.5th, 5th, 10th, 50th, 95th and 97.5th centiles of hemoglobin at given gestational weeks during pregnancy and 6-week postpartum.
+
+```{r}
+# use long format data
+df_fpr_ic <- df_fpr %>%
+  filter(SITE == "India-CMC") %>%
+  mutate(range = (max(ga_wks) - min(ga_wks)))
+fpr_mod_ic <- fpr_fun(df_fpr_ic)
+```
+
+
+```{r}
+# get model coefficients for mean and sigma
+tb_coef_ic <- tb_coef_fun(fpr_mod_ic)
+tb_power_ic <- tb_power_fun(fpr_mod_ic)
+
+```
+
+```{r, results='hide'}
+scale_ic = unique(10*(sign(log10(df_fpr_ic$range)))*trunc(abs(log10(df_fpr_ic$range))))
+tb_coef_ic
+tb_power_ic
+
+```
+
+<!-- *india-cmc -->
+The FPR model for $\mu$ and $\sigma$ are
+$$\mu = 11.65454379 - 20.27017277 + 21.5406280(GA/10)^{-0.5} + 7.012179523log(GA/10)$$
+and $$log(\sigma) = -0.05134491 - 0.03422043 - 0.2371503^{-2} + 0.004719108(GA/10)^{3}$$
+respectively.
+
+## Centile plots of hemoglobin against gestational weeks
+
+Given the fitted FPR model, we can plot the centile curves of hemoglobin against the gestational weeks. Also add the WHO thresholds to compare with.
+
+### Centile curves using FPR model (2.5, 5, 10, 50, 90, 95, 97.5)th centiles vs WHO threshold
+
+```{r centile plot India-CMC,  results='hide'}
+# make centile plots based on the fitted FPR model
+par(mar=c(4, 4, 4, 3), 
+    xpd=TRUE, 
+    cex.main = 0.85, 
+    cex.lab = 0.8,
+    cex.axis = 0.8)
+
+centiles_ic <- centiles_fun(fpr_mod_ic, df_fpr_ic, "Centile Curves Using FPR Model \n (2.5, 5, 10, 50, 90, 95, 97.5)th Centiles vs WHO Threshold \n India-CMC")
+
+```
+
+
+### Diagnostic plot
+We use diagnostic plots to examine if the FPR model is a good fit to the hemoglobin centile curves.
+
+```{r, results='hide'}
+df_emp_ic <- df_fpr_ic %>%
+  mutate(ga_wks_floor = floor(ga_wks)) %>%
+  group_by(ga_wks_floor) %>%
+  summarise(cent_2.5 = quantile(hb, probs = c(0.025), na.rm = TRUE),
+            cent_50 = quantile(hb, probs = c(0.50), na.rm = TRUE),
+            cent_97.5 = quantile(hb, probs = c(0.975), na.rm = TRUE)) %>%
+  ungroup()
+```
+
+```{r, results='hide'}
+par(cex.main = 0.85, 
+    cex.lab = 0.8, 
+    cex.axis = 0.8)
+
+plot_fpr_emp_ic <- plot_fpr_emp_fun(fpr_mod_ic, df_fpr_ic, df_emp_ic)
+
+points(x = df_emp_ic$ga_wks_floor, y = df_emp_ic$cent_2.5, col = "red")
+
+points(x = df_emp_ic$ga_wks_floor, y = df_emp_ic$cent_50, col = "blue")
+
+points(x = df_emp_ic$ga_wks_floor, y = df_emp_ic$cent_97.5, col = "red")
+```
+
+In the “FPR centiles VS Empirical centiles” plot, we will observe if the FPR curves are consistent with empirical curves.
+
+In addition, we use four plots of normalized quantile residuals to check the adequacy of the fitted fractional polynomial regression model. If the residuals display the behavior of following a standard normal distribution, the model is a good fit. The four plots are:
+
+- top left: residuals against the fitted values of the mean parameter.
+
+- top right: residuals against the specified covariate.
+
+- bottom left: a kernel density estimate of the residuals.
+
+- bottom right: a QQ-normal plot of the residuals.
+
+```{r}
+newpar <- par(mfrow = c(2, 2), mar = par("mar") + c(0, 1, 0, 0), 
+
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+
+              col.lab = "blue4", pch = "+", cex = 0.45, cex.lab = 1.2,
+
+              cex.axis = 1, cex.main = 1.2)
+
+plot_diag_ic <- plot_diag_fun(fpr_mod_ic, df_fpr_ic)
+
+par(newpar)
+
+```
+
+The residuals behave well if the top two plots show a random scatter around the horizontal line at 0, and the kernel density estimate of the residuals is approximately normal and the normal QQ-plot is approximately linear.
+
+## Estimate the centiles at given gestational weeks
+
+We estimate the 2.5th, 50th, and 97.5th centiles at 14, 20, 28, 32, 36 gestational weeks using predictions from the FPR curves. Also compare the predicted hemoglobin value with empirical percentile at each time point.
+
+```{r emptable cmc, results='hide'}
+#calculate mean column
+tb_emp_ic <- df_sensitive_long %>%
+  filter(SITE == "India-CMC") %>%
+  mutate(ga_wks_floor = floor(ga_wks)) %>%
+  group_by(ga_wks_floor) %>%
+  summarise(
+    cent_2.5 = quantile(hb, probs = c(0.025), na.rm = TRUE),
+    cent_50 = quantile(hb, probs = c(0.50), na.rm = TRUE),
+    cent_97.5 = quantile(hb, probs = c(0.975), na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  filter(ga_wks_floor %in% c(12, 14, 20, 28, 32, 36))
+
+if (!any(tb_emp_ic == 28)) {
+  tb_emp_ic <- add_row(tb_emp_ic, ga_wks_floor = 28, cent_2.5 = NA, cent_50 = NA, cent_97.5 = NA) %>% 
+  arrange(ga_wks_floor) }
+
+# centiles at 14, 20, 28, 32, 36 gestational weeks predicted by FPR model
+tb_pred_ic <- tb_pred_fun(fpr_mod_ic, df_fpr_ic, tb_emp_ic)
+
+```
+
+```{r FPR predicted centiles-India-CMC, out.width='60%'}
+tb12 <- tb_theme3(tb_pred_ic) %>% 
+  # table title
+  tab_header(
+    title = paste0("Table 12. FPR predicted centiles & Empirical precentile - India-CMC")
+  ) %>%
+  gtsave(paste0("tb12.png"), expand = 10)
+
+knitr::include_graphics("tb12.png")
+
+```
+
+## Sensitivity analysis
+
+### Sensitivity analysis by excluding the subgroup of subjects with adverse oucomes.
+
+Compare sample under each subsample \textcolor{red}{(red line)} with all enrolled (black line).
+
+- Sensitivity analysis by excluding the subgroup of subjects with preterm delivery
+
+```{r , results='hide', fig.align='center', out.width='60%'}
+cents <- c(2.5, 50, 97.5)
+
+fpr_mod_sensitive_ic <- fpr_mod_sensitive_fun(df_fpr_ic, fpr_mod_ic, "preterm37_mom")
+
+newpar <- par(mfrow = c(1,1), mar = par("mar") + c(0, 1, 0, 0),
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+              col.lab = "blue4", pch = "+", cex = 0.45, cex.lab = 2,
+              cex.axis = 2, cex.main = 2)
+
+par(newpar)
+```
+
+Check whether the centile plots are sensitive to removing the group with preterm delivery.
+
+# **Fractional polynomial regression - India-SAS**
+
+Assuming we have normally distributed data and the heterogeneity of CBC-hemoglobin across sites cannot be ignored, we will do site specific analysis. We will use India-SAS data in this section and estimate the 2.5th, 5th, 10th, 50th, 95th and 97.5th centiles of hemoglobin at given gestational weeks during pregnancy and 6-week postpartum.
+
+```{r}
+# use long format data
+df_fpr_is <- df_fpr %>%
+  filter(SITE == "India-SAS") %>%
+  mutate(range = (max(ga_wks) - min(ga_wks)))
+# fit a second-order FPR model
+fpr_mod_is <- fpr_fun(df_fpr_is)
+```
+
+
+```{r}
+# get model coefficients for mean and sigma
+tb_coef_is <- tb_coef_fun(fpr_mod_is)
+tb_power_is <- tb_power_fun(fpr_mod_is)
+
+```
+
+```{r, results='hide'}
+scale_is = unique(10*(sign(log10(df_fpr_is$range)))*trunc(abs(log10(df_fpr_is$range))))
+tb_coef_is
+tb_power_is
+
+```
+
+<!-- *india-sas -->
+The FPR model for $\mu$ and $\sigma$ are
+$$\mu = 11.0906273 - 1.7733238 + 2.4330598(GA/10)^{-2} + 5.5855978(GA/10)^{-2}log(GA/10)$$
+and $$log(\sigma) = 0.1552803 - 0.2291292 + 0.1377563(GA/10)^{3} - 0.1276461(GA/10)^{3}log(GA/10)$$
+respectively.
+
+## Centile plots of hemoglobin against gestational weeks 
+
+Given the fitted FPR model, we can plot the centile curves of hemoglobin against the gestational weeks. Also add the WHO thresholds to compare with.
+
+### Centile curves using FPR model (2.5, 5, 10, 50, 90, 95, 97.5)th centiles vs WHO threshold
+
+```{r centile plot India-SAS,  results='hide'}
+# make centile plots based on the fitted FPR model
+par(mar=c(4, 4, 4, 3), 
+    xpd=TRUE, 
+    cex.main = 0.85, 
+    cex.lab = 0.8,
+    cex.axis = 0.8)
+
+centiles_is <- centiles_fun(fpr_mod_is, df_fpr_is, "Centile Curves Using FPR Model \n (2.5, 5, 10, 50, 90, 95, 97.5)th Centiles vs WHO Threshold \n India-SAS")
+
+
+```
+
+
+### Diagnostic plot
+We use diagnostic plots to examine if the FPR model is a good fit to the hemoglobin centile curves.
+
+```{r, results='hide'}
+df_emp_is <- df_fpr_is %>%
+  mutate(ga_wks_floor = floor(ga_wks)) %>%
+  group_by(ga_wks_floor) %>%
+  summarise(cent_2.5 = quantile(hb, probs = c(0.025), na.rm = TRUE),
+            cent_50 = quantile(hb, probs = c(0.50), na.rm = TRUE),
+            cent_97.5 = quantile(hb, probs = c(0.975), na.rm = TRUE)) %>%
+  ungroup()
+```
+
+```{r, results='hide'}
+#change font size
+par(cex.main = 0.85, 
+    cex.lab = 0.8, 
+    cex.axis = 0.8)
+
+plot_fpr_emp_is <- plot_fpr_emp_fun(fpr_mod_is, df_fpr_is, df_emp_is)
+
+points(x = df_emp_is$ga_wks_floor, y = df_emp_is$cent_2.5, col = "red")
+
+points(x = df_emp_is$ga_wks_floor, y = df_emp_is$cent_50, col = "blue")
+
+points(x = df_emp_is$ga_wks_floor, y = df_emp_is$cent_97.5, col = "red")
+```
+
+In the “FPR centiles VS Empirical centiles” plot, we will observe if the FPR curves are consistent with empirical curves.
+
+In addition, we use four plots of normalized quantile residuals to check the adequacy of the fitted fractional polynomial regression model. If the residuals display the behavior of following a standard normal distribution, the model is a good fit. The four plots are:
+
+- top left: residuals against the fitted values of the mean parameter.
+
+- top right: residuals against the specified covariate.
+
+- bottom left: a kernel density estimate of the residuals.
+
+- bottom right: a QQ-normal plot of the residuals.
+
+```{r}
+newpar <- par(mfrow = c(2, 2), mar = par("mar") + c(0, 1, 0, 0), 
+
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+
+              col.lab = "blue4", pch = "+", cex = 0.45, cex.lab = 1.2,
+
+              cex.axis = 1, cex.main = 1.2)
+
+plot_diag_is <- plot_diag_fun(fpr_mod_is, df_fpr_is)
+
+par(newpar)
+
+```
+
+The residuals behave well if the top two plots show a random scatter around the horizontal line at 0, and the kernel density estimate of the residuals is approximately normal and the normal QQ-plot is approximately linear.
+
+## Estimate the centiles at given gestational weeks
+
+We estimate the 2.5th, 50th, and 97.5th centiles at 14, 20, 28, 32, 36 gestational weeks using predictions from the FPR curves. Also compare the predicted hemoglobin value with empirical percentile at each time point.
+
+```{r emptable SAS, results='hide'}
+#calculate mean column
+tb_emp_is <- df_sensitive_long %>%
+  filter(SITE == "India-SAS") %>%
+  mutate(ga_wks_floor = floor(ga_wks)) %>%
+  group_by(ga_wks_floor) %>%
+  summarise(
+    cent_2.5 = quantile(hb, probs = c(0.025), na.rm = TRUE),
+    cent_50 = quantile(hb, probs = c(0.50), na.rm = TRUE),
+    cent_97.5 = quantile(hb, probs = c(0.975), na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  filter(ga_wks_floor %in% c(12, 14, 20, 28, 32, 36)) 
+
+#!!! temp solution for missing ga_wks
+# Values to check and add if missing
+values_to_add <- c(28, 32, 36)
+
+for (value in values_to_add) {
+  if (!any(tb_emp_is$ga_wks_floor == value)) {
+    tb_emp_is <- add_row(tb_emp_is, ga_wks_floor = value, cent_2.5 = NA, cent_50 = NA, cent_97.5 = NA) %>% 
+        arrange(ga_wks_floor)
+  }
+}
+
+# centiles at 14, 20, 28, 32, 36 gestational weeks predicted by FPR model
+tb_pred_is <- tb_pred_fun(fpr_mod_is, df_fpr_is, tb_emp_is)
+
+```
+
+```{r FPR predicted centiles-India-SAS, out.width='60%'}
+tb13 <- tb_theme3(tb_pred_is) %>% 
+  # table title
+  tab_header(
+    title = paste0("Table 13. FPR predicted centiles & Empirical precentile - India-SAS")
+  ) %>%
+  gtsave(paste0("tb13.png"), expand = 10)
+
+knitr::include_graphics("tb13.png")
+
+```
+
+## Sensitivity analysis
+
+### Sensitivity analysis by excluding the subgroup of subjects with adverse oucomes.
+
+Compare sample under each subsample \textcolor{red}{(red line)} with all enrolled (black line).
+
+- Sensitivity analysis by excluding the subgroup of subjects with preterm delivery
+
+```{r , results='hide', fig.align='center', out.width='60%'}
+cents <- c(2.5, 50, 97.5)
+
+fpr_mod_sensitive_is <- fpr_mod_sensitive_fun(df_fpr_is, fpr_mod_is, "preterm37_mom")
+
+newpar <- par(mfrow = c(1,1), mar = par("mar") + c(0, 1, 0, 0),
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+              col.lab = "blue4", pch = "+", cex = 0.45, cex.lab = 2,
+              cex.axis = 2, cex.main = 2)
+
+par(newpar)
+```
+
+Check whether the centile plots are sensitive to removing the group with preterm delivery.
+
+
+# **Predicted centile plots of hemoglobin against gestational weeks - site comparison**
+
+## Site specific prediction of hemoglobin percentile
+
+```{r , fig.show="hold", results='hide', fig.align='center', fig.height=3.8}
+# sites id
+sites <- as.character(c(1:4))
+# centiles
+cents <- c(2.5, 5, 10, 50, 90, 95, 97.5)
+# a function to plot centile curves after excluding certain site
+fpr_mod_site <- function(s,t){
+  # remove the selected site data
+  dat <- df_fpr %>% filter(SITE == s)
+  # fit a FPR model on the rest data
+  mod <- gamlss(hb ~ fp(ga_wks, 2, shift = 0, scale = 1),
+                sigma.fo = ~ fp(ga_wks, 2, shift = 0, scale = 1),
+                data = dat, control = con)
+  x <- df_fpr$ga_wks
+  # predict hemoglobin centiles by FPR model fitted on all data
+  y_mod <- centiles.pred(mod,
+                         xname = "ga_wks", xvalues = x,
+                         type = c("centiles"), cent = cents, data = dat)
+  # compare the centile curves
+  plot(y_mod[,1], y_mod[,2],
+       ylim = c(5, 18),
+       type="n",
+       xlab = "Gestational week", ylab = "Hemoglobin (g/dL)",
+       main = paste0(s,t))
+  mycolor = c("#C11B17", "#D8863D","#016795", "#0B1304", "#016795", "#D8863D","#C11B17")
+  for(i in 2:(length(cents)+1)) {
+    lines(y_mod[,1], y_mod[,i], col = mycolor[i-1])
+  }
+  legend("topright", legend=c(97.5, 95, 90, 50, 10, 5, 2.5), lty = 1,
+       col=c("#C11B17", "#D8863D","#016795", "#0B1304", "#016795", "#D8863D","#C11B17"),  cex=0.8)
+}
+
+newpar <- par(mfrow = c(2, 2), 
+              mar = par("mar") + c(0, 1, 0, 0), 
+              col.axis = "black", col = "black", col.main = "black",
+              col.lab = "black", pch = "+", cex = 0.4, 
+              cex.lab = 1.2,
+              cex.axis = 1,
+              cex.main = 1.5)
+#site 
+fpr_mod_site("Pakistan", paste0(" (n=", nrow(df_fpr %>% filter(SITE == "Pakistan")), ")"))
+fpr_mod_site("Kenya", paste0(" (n=", nrow(df_fpr %>% filter(SITE == "Kenya")), ")"))
+fpr_mod_site("Ghana", paste0(" (n=", nrow(df_fpr %>% filter(SITE == "Ghana")), ")"))
+fpr_mod_site("Zambia", paste0(" (n=", nrow(df_fpr %>% filter(SITE == "Zambia")), ")"))
+fpr_mod_site("India-CMC", paste0(" (n=", nrow(df_fpr %>% filter(SITE == "India-CMC")), ")"))
+fpr_mod_site("India-SAS", paste0(" (n=", nrow(df_fpr %>% filter(SITE == "India-SAS")), ")"))
+
+mtext("Note: n shown here is the sample size of data used to predict the centiles", side = 1, outer = TRUE, line = -20, cex = 0.8)
+```
+
+# **Centile plots of hemoglobin against gestational weeks by site**
+```{r,fig.show="hold", results='hide', fig.align='center', fig.height=4.3}
+newpar <- par(mfrow = c(2, 2), 
+              mar = par("mar") + c(0, 1, 0, 0), 
+              col.axis = "black", col = "black", col.main = "black",
+              col.lab = "black", pch = "+", cex = 0.4, 
+              cex.lab = 1.2,
+              cex.axis = 1,
+              cex.main = 1.5)
+#site 
+centiles_fun(fpr_mod_pa, df_fpr_pa, paste0("Centile Curves - Pakistan (n=", nrow(df_fpr %>% filter(SITE == "Pakistan")), ")"))
+
+centiles_fun(fpr_mod_ke, df_fpr_ke, paste0("Centile Curves - Kenya (n=", nrow(df_fpr %>% filter(SITE == "Kenya")), ")"))
+
+centiles_fun(fpr_mod_gh, df_fpr_gh, paste0("Centile Curves - Ghana (n=", nrow(df_fpr %>% filter(SITE == "Ghana")), ")"))
+
+centiles_fun(fpr_mod_za, df_fpr_za, paste0("Centile Curves - Zambia (n=", nrow(df_fpr %>% filter(SITE == "Zambia")), ")"))
+
+centiles_fun(fpr_mod_ic, df_fpr_ic, paste0("Centile Curves - India-CMC (n=", nrow(df_fpr %>% filter(SITE == "India-CMC")), ")"))
+
+centiles_fun(fpr_mod_is, df_fpr_is, paste0("Centile Curves - India-SAS (n=", nrow(df_fpr %>% filter(SITE == "India-SAS")), ")"))
+
+
+```
+
+# **Estimate centiles at given gestational weeks - site comparison**
+
+```{r, results='hide'}
+tb_pred_vs <- tb_pred_pa %>% 
+  bind_rows(tb_pred_ke) %>% 
+  bind_rows(tb_pred_gh) %>% 
+  bind_rows(tb_pred_za) %>% 
+  bind_rows(tb_pred_ic) %>% 
+  bind_rows(tb_pred_is)
+
+```
+
+```{r, out.width='65%'}
+tb14 <- tb_theme3(tb_pred_vs) %>%
+  # table title
+  tab_header(
+    title = paste0("Table 14. FPR predicted centiles & Empirical precentile - Site Comparison")
+  ) %>%
+  tab_row_group(
+      label = "Pakistan",
+      rows = 1:5
+    ) %>%
+  tab_row_group(
+      label = "Kenya",
+      rows = 6:10
+   ) %>%
+  tab_row_group(
+      label = "Ghana",
+      rows = 11:15
+   ) %>%
+    tab_row_group(
+      label = "Zambia",
+      rows = 16:20
+    ) %>%
+  tab_row_group(
+      label = "India-CMC",
+      rows = 21:25
+   ) %>%
+  tab_row_group(
+      label = "India-SAS",
+      rows = 26:30
+   ) %>%
+  row_group_order(groups = c("Pakistan",
+                             "Kenya",
+                             "Ghana",
+                             "Zambia",
+                             "India-CMC",
+                             "India-SAS")) %>%
+  gtsave(paste0("tb14.png"), expand = 10)
+
+knitr::include_graphics("tb14.png")
+
+```
