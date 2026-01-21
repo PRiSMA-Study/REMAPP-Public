@@ -1,0 +1,1907 @@
+---
+title: "<span style='font-size: 16px'> <span style='text-align: center'> Redefining Maternal Anemia in Pregnancy and Postpartum (ReMAPP) Aim 1 and 2 Combined Manuscript Report"
+date: "Issued: `r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 4
+    number_sections: false
+    latex_engine: xelatex
+toc-title: "Table of Contents"
+header-includes:
+  - \usepackage{sectsty}
+  - \sectionfont{\fontsize{10}{12}\selectfont}  % H1 size/leading
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE) 
+
+rm(list = ls())
+
+library(tidyverse)
+library(naniar)
+library(flextable)
+library(officer)
+library(scales) 
+library(wesanderson)
+library(gridExtra)
+library(gt)
+library(flowchart)
+library(magick)
+library(gtsummary)
+
+
+UploadDate = "2025-10-31"
+Version = "1.0"
+
+base_dir <- file.path("D:/Users/williams_pj/Documents/Analysis/ReMAPP/Manuscript", UploadDate)
+
+# Create the main directory if it does not exist
+if (!dir.exists(base_dir)) {
+  dir.create(base_dir, recursive = TRUE)
+}
+
+# Create the "derived_data" subdirectory if it does not exist
+derived_dir <- file.path(base_dir, "derived_data")
+if (!dir.exists(derived_dir)) {
+  dir.create(derived_dir)
+}
+
+# Set working directory ----
+setwd(base_dir)
+
+# Print path to confirm
+getwd()
+
+# Aim 1 Folder Directory ----
+aim1_base   <- file.path("D:/Users/williams_pj/Documents/Analysis/ReMAPP/Aim1", UploadDate)
+aim1_dfs    <- file.path(aim1_base, "derived_data")
+
+# Aim 2 Folder Directory ----
+aim2_base   <- file.path("D:/Users/williams_pj/Documents/Analysis/ReMAPP/Aim2", UploadDate)
+aim2_dfs    <- file.path(aim2_base, "derived_data")
+aim2_result <- file.path(aim2_base, "iso_results")
+
+#Aim 2 Loop code directories
+# source("~/REMAPP-Public/ReMAPP-Aim2/iso_code/plot_boot.R")
+  
+```
+
+\newpage
+
+# Introduction
+
+The **Redefining Maternal Anemia in Pregnancy and Postpartum (ReMAPP)
+Study** aims to leverage the Antenatal Care and Postnatal Care Research
+Collective (ARC) network to strengthen clinical understanding of anemia
+during pregnancy. The study's overarching goal is to generate
+high-quality evidence that supports the establishment of hemoglobin
+thresholds linked to meaningful functional outcomes.
+
+The study focuses on two types of thresholds:
+
+1.  **Reference limits** -- estimates of anemia defining percentiles for
+    complete blood count (cbc) hemoglobin within a carefully defined
+    *healthy* population.
+
+2.  **Decision limits** -- thresholds informed by the relationship
+    between complete blood count (cbc) hemoglobin levels and
+    epidemiological outcomes.
+
+### Defining the Healthy Population
+
+For the reference limit analyses, the healthy cohort is defined by 20
+criteria, including:
+
+-   **C1**: Age 18--34 years
+-   **C2**: Gestational age \<14 weeks
+-   **C3**: Pre-pregnancy/early pregnancy BMI 18.5--30 kg/m² and
+    mid-upper arm circumference \>23 cm
+-   **C4**: Height ≥150 cm
+-   **C5**: Singleton pregnancy
+-   **C6**: No history of low birth weight delivery
+-   **C7**: No history of stillbirth
+-   **C8**: No history of unplanned cesarean delivery
+-   **C9**: No reported cigarette smoking, tobacco chewing, or betel nut
+    use during pregnancy
+-   **C10**: No alcohol use during pregnancy
+-   **C11**: No chronic conditions (e.g., cancer, kidney disease,
+    cardiac disease)
+-   **C12**: No history of or current HIV
+-   **C13**: Blood pressure \<140/90 mmHg
+-   **C14**: No current malaria infection (rapid diagnostic test)
+-   **C15**: No current Hepatitis B infection (rapid diagnostic test)
+-   **C16**: No current Hepatitis C infection (rapid diagnostic test)
+-   **C17**: Not iron deficient (serum ferritin \>15 mcg/L, adjusted for
+    inflammation)
+-   **C18**: No subclinical inflammation (CRP ≤5 mg/L and/or AGP ≤1 g/L)
+-   **C19**: No hemoglobinopathies (e.g., SS, SC, SE, EE, CC, SD-Punjab,
+    thalassemias, etc.)
+-   **C20**: Normal glucose-6-phosphate dehydrogenase (≥6.1 U/g Hb)
+
+### Study Samples
+
+-   For **reference limit analyses** (Aim 1), only the *healthy cohort*
+    is included.
+-   For **decision limit analyses** (Aim 2), the *entire ReMAPP cohort*
+    is analyzed to evaluate associations between cbc hemoglobin
+    thresholds and epidemiological outcomes.
+
+\newpage
+
+# Table 1: Baseline Characteristics
+
+```{r, baseline setup, echo=FALSE, include=FALSE}
+
+library(dplyr)
+library(gtsummary)
+library(gt)
+library(rlang)
+
+#Load in the datasets for use for the baseline tables ----
+#all_screen df ----
+##this is all the data prescreened, screened in REMAPP
+load(file.path(aim1_dfs, "all_screen.rda"))
+load(file.path(aim1_dfs, "df_criteria.rda"))
+load(file.path(aim1_dfs, "MAT_DEMOGRAPHIC.rda"))
+load(file.path(aim1_dfs, "MAT_ENROLL.rda"))
+load(file.path(aim1_dfs, "df_hb_wide1_hc.rda"))
+load(file.path(aim1_dfs, "df_hb_wide1.rda"))
+
+hb_data <- df_hb_wide1_hc %>% filter (!is.na(PREG_START_DATE)) %>% 
+   mutate (HB_DATA = "Yes")  %>%
+   select (MOMID, PREGID, SITE, HB_DATA)
+ 
+hb_valid_data <- df_hb_wide1 %>% filter (!is.na(PREG_START_DATE)) %>% 
+   mutate (HB_VALID_DATA = "Yes")  %>%
+   select (MOMID, PREGID, SITE, HB_VALID_DATA)
+ 
+REMAPP <- all_screen %>% 
+  select(SITE, MOMID, PREGID, SCREEN_PASS, ENROLL_NO_ISSUES, HEALTHY_ELIGIBLE)  %>%
+  filter(SCREEN_PASS == "Yes"  & ENROLL_NO_ISSUES == 1) %>%
+  select(MOMID, PREGID, SITE, HEALTHY_ELIGIBLE) %>%
+  distinct(PREGID, SITE, .keep_all = TRUE) %>% 
+  left_join(hb_data, by = c("MOMID","PREGID","SITE")) %>% 
+  left_join(hb_valid_data, by = c("MOMID","PREGID","SITE")) 
+
+df_baseline <- df_criteria %>%
+  left_join(dplyr::select(MAT_DEMOGRAPHIC, -ENROLL_SCRN_DATE),
+            by = c("SITE", "MOMID", "PREGID", "SCRNID")) %>%
+  mutate(
+    GA_WKS_ENROLL = as.numeric(GA_WKS_ENROLL),
+
+    ## Age category
+    AGE_ENROLL = dplyr::case_when(
+      MAT_AGE < 20 ~ 0,
+      MAT_AGE >= 20 & MAT_AGE < 35 ~ 1,
+      MAT_AGE >= 35 ~ 2,
+      TRUE ~ NA
+    ),
+    AGE_CAT = factor(
+      AGE_ENROLL,
+      levels = c(0, 1, 2),
+      labels = c("<20 years", "20-34 years", "35+ years")
+    ),
+
+    ## BMI
+    BMI_CAT = factor(
+      BMI_LEVEL_ENROLL,
+      levels = c(1, 2, 3, 4),
+      labels = c("Underweight (<18.5)", "Normal (18.5-24)", "Overweight (25-29)", "Obese (>=30)")
+    ),
+
+    ## MUAC
+    MUAC_CAT_ENROLL = dplyr::case_when(
+      MUAC_ENROLL < 21 ~ 0,
+      MUAC_ENROLL >= 21 & MUAC_ENROLL < 23 ~ 1,
+      MUAC_ENROLL >= 23 ~ 2,
+      TRUE ~ NA
+    ),
+    MUAC_CAT = factor(
+      MUAC_CAT_ENROLL,
+      levels = c(0, 1, 2),
+      labels = c("Severely malnourished (<21)", 
+                 "Moderately malnourished (21 to <23)", 
+                 "Normal (>=23)")),
+
+    ## Height
+   HEIGHT_GROUP_ENROLL = dplyr::case_when(
+      HEIGHT_GROUP %in% c(1,2) ~ 0,
+      HEIGHT_GROUP == 3 ~ 1,
+      HEIGHT_GROUP == 4 ~ 2,
+      TRUE ~ NA
+    ),
+    HEIGHT_CAT = factor(
+      HEIGHT_GROUP_ENROLL,
+      levels = c(0, 1, 2),
+      labels = c("<150", "150-<155", ">=155")),
+
+    ## Years of formal Education
+    SCHOOL_YRS = as.numeric(SCHOOL_YRS),
+
+    ## Marital status
+    MARRY_CAT_STATUS = dplyr::case_when(
+      MARRY_STATUS %in% c(2, 3, 4, 5) ~ 0,
+      MARRY_STATUS == 1 ~ 1,
+      TRUE ~ NA
+    ),
+    MARRIED = MARRY_CAT_STATUS,  # create a 0/1 var for dichotomous summary if desired
+    MARRIED_CAT = factor(
+      MARRY_CAT_STATUS,
+      levels = c(0, 1),
+      labels = c("Not Married", "Married/Cohabitating")
+    ),
+
+    ## Parity
+    GPARITY_STATUS = dplyr::case_when( NULLIPAROUS == 1 ~ 0, 
+                                       NULLIPAROUS == 0 ~ 1,
+                                       TRUE ~ NA),
+    GPARITY_CAT = factor(
+      GPARITY_STATUS,
+      levels = c(0, 1),
+      labels = c("Nulliparous", "Multiparous")
+    ),
+
+    ## Substance Use (coded to 1 if any use)
+    SUBSTANCE_USE = dplyr::case_when(
+      CRIT_SMOKE == 0 | CRIT_DRINK == 0 ~ 1,
+      CRIT_SMOKE == 1 & CRIT_DRINK == 1 ~ 0,
+      TRUE ~ NA
+    ),
+
+    ## Infections / conditions (1 = present)
+    MALARIA = dplyr::case_when(CRIT_MALARIA == 0 ~ 1, CRIT_MALARIA == 1 ~ 0, TRUE ~ NA),
+    HEP_B  = dplyr::case_when(CRIT_HEPATITISB == 0 ~ 1, CRIT_HEPATITISB == 1 ~ 0, TRUE ~ NA),
+    HEP_C  = dplyr::case_when(CRIT_HEPATITISC == 0 ~ 1, CRIT_HEPATITISC == 1 ~ 0, TRUE ~ NA),
+    IRON_DEF = dplyr::case_when(CRIT_IRON == 0 ~ 1, CRIT_IRON == 1 ~ 0, TRUE ~ NA),
+    RBC_HEMO = dplyr::case_when(CRIT_HEMOGLOBINOPATHIES == 0 ~ 1, CRIT_HEMOGLOBINOPATHIES == 1 ~ 0, TRUE ~ NA),
+    G6PD = dplyr::case_when(CRIT_G6PD == 0 ~ 1, CRIT_G6PD == 1 ~ 0, TRUE ~ NA),
+
+    ## Obstetric history (1 = present)
+    PREV_LBW = dplyr::case_when(CRIT_LBW == 0 ~ 1, CRIT_LBW == 1 ~ 0, TRUE ~ NA),
+    PREV_STILLBIRTH = dplyr::case_when(CRIT_STILLBIRTH == 0 ~ 1, CRIT_STILLBIRTH == 1 ~ 0, TRUE ~ NA),
+    PREV_UNPLANNED_CS = dplyr::case_when(CRIT_UNPL_CESARIAN == 0 ~ 1, CRIT_UNPL_CESARIAN == 1 ~ 0, TRUE ~ NA)
+  )
+
+demo_df <- REMAPP %>%
+  left_join(df_baseline,     by = c("MOMID", "PREGID", "SITE")) %>%
+  mutate(COHORT_CAT = case_when(HEALTHY_ELIGIBLE == 1 & HB_DATA == "Yes" & 
+                                HB_VALID_DATA == "Yes" ~ "Healthy cohort",
+                                TRUE ~ "Full cohort"),
+        ALL_FLAG = "Full cohort")
+
+demo_df_long <- bind_rows(
+  demo_df %>% mutate(GROUP = ALL_FLAG),
+  demo_df %>% filter(COHORT_CAT == "Healthy cohort") %>% mutate(GROUP = "Healthy cohort")
+)
+
+## --------------------------
+## Auto-detect variable types
+## --------------------------
+# choose variables to include in table (add/remove as needed)
+# Use *only* the variables you just specified
+keep_vars <- c(
+  # continuous
+  "MAT_AGE","GA_WKS_ENROLL","SCHOOL_YRS",
+  # candidate categorical/dichotomous
+  "MARRIED","GPARITY_CAT",
+  "SUBSTANCE_USE","MALARIA","HEP_B","HEP_C","IRON_DEF",
+  "RBC_HEMO","G6PD","PREV_LBW","PREV_STILLBIRTH","PREV_UNPLANNED_CS",
+  # multi-category
+  "AGE_CAT","BMI_CAT","MUAC_CAT","HEIGHT_CAT"
+)
+dat <- demo_df_long %>% dplyr::select(GROUP, dplyr::any_of(keep_vars))
+
+continuous_vars <- c("GA_WKS_ENROLL","SCHOOL_YRS")
+dichotomous_vars <- c(
+  "MARRIED","NULLIPAROUS",
+  "SUBSTANCE_USE","MALARIA","HEP_B","HEP_C","IRON_DEF",
+  "RBC_HEMO","G6PD","PREV_LBW","PREV_STILLBIRTH","PREV_UNPLANNED_CS"
+)
+cat_vars <- c("AGE_CAT","BMI_CAT","MUAC_CAT","HEIGHT_CAT")
+
+use_cont  <- intersect(continuous_vars, names(demo_df_long))
+use_dicho <- intersect(dichotomous_vars, names(demo_df_long))
+use_cat   <- intersect(cat_vars, names(demo_df_long))
+
+# build a named character vector once
+label_text <- c(
+  GA_WKS_ENROLL = "Gestational age at first visit (weeks); mean (SD)",
+  SCHOOL_YRS    = "Years of formal education; mean (SD)",
+  AGE_CAT       = "Age category; n (%)",
+  BMI_CAT       = "Body Mass Index (kg/m²); n (%)",
+  MUAC_CAT      = "MUAC (cm); n (%)",
+  HEIGHT_CAT    = "Height (cm); n (%)",
+  MARRIED       = "Married or cohabiting; n (%)",
+  NULLIPAROUS   = "Nulliparous; n (%)",
+  SUBSTANCE_USE = "Any substance use at baseline; n (%)",
+  MALARIA       = "Current malaria infection; n (%)",
+  HEP_B         = "Hepatitis B infection; n (%)",
+  HEP_C         = "Hepatitis C infection; n (%)",
+  IRON_DEF      = "Iron deficiency; n (%)",
+  RBC_HEMO      = "Hemoglobinopathy; n (%)",
+  G6PD          = "G6PD deficiency; n (%)",
+  PREV_LBW      = "History of low birth weight; n (%)",
+  PREV_STILLBIRTH   = "History of stillbirth; n (%)",
+  PREV_UNPLANNED_CS = "History of unplanned cesarean; n (%)"
+)
+
+# helper: make a *named list of strings* for only the vars in this section
+make_label_list <- function(vars) {
+  lt <- label_text[names(label_text) %in% vars]
+  if (length(lt) == 0) return(NULL)
+  as.list(lt)  # <-- named list of plain strings (no formulas)
+}
+
+# helper: build one section (NO pooled column)
+build_tbl <- function(.data, vars) {
+  if (length(vars) == 0) return(NULL)
+  labels_this <- make_label_list(vars)
+  
+  .data %>%
+    ungroup() %>%
+    dplyr::select(GROUP, dplyr::all_of(vars)) %>%
+    gtsummary::tbl_summary(
+      by = GROUP,
+      type = list(
+        dplyr::all_of(intersect(vars, use_cont))  ~ "continuous",
+        dplyr::all_of(intersect(vars, use_dicho)) ~ "dichotomous",
+        dplyr::all_of(intersect(vars, use_cat))   ~ "categorical"
+      ),
+      value = list(gtsummary::all_dichotomous() ~ "1"),
+      label = labels_this,                # <-- named list of strings
+      missing = "no",
+      statistic = list(
+        gtsummary::all_continuous()  ~ "{mean} ± {sd}",
+        gtsummary::all_categorical() ~ "{n} ({p}%)"
+      ),
+      digits = list(
+        gtsummary::all_continuous()  ~ 1,
+        gtsummary::all_categorical() ~ c(0, 1)
+      )
+    ) %>%
+    gtsummary::modify_header(label ~ "**ReMAPP Participants**")
+}
+
+grp_demographic <- intersect(c("GA_WKS_ENROLL","SCHOOL_YRS","AGE_CAT"), names(dat))
+grp_anthro      <- intersect(c("HEIGHT_CAT","BMI_CAT","MUAC_CAT"), names(dat))
+grp_lifestyle   <- intersect(c("MARRIED","SUBSTANCE_USE"), names(dat))
+grp_obstetric   <- intersect(c("NULLIPAROUS","PREV_LBW","PREV_STILLBIRTH","PREV_UNPLANNED_CS"), names(dat))
+grp_infections  <- intersect(c("MALARIA","HEP_B","HEP_C","IRON_DEF", "RBC_HEMO","G6PD"), names(dat))
+
+
+# build + stack sections with headers
+tbls <- Filter(Negate(is.null), list(
+  build_tbl(dat, grp_demographic),
+  build_tbl(dat, grp_anthro),
+  build_tbl(dat, grp_lifestyle),
+  build_tbl(dat, grp_obstetric),
+  build_tbl(dat, grp_infections)
+))
+headers <- c("Demographics", "Anthropometry", "Lifestyle", "Obstetric History", "Infections & Hematology")[seq_along(tbls)]
+
+demo_table_grouped <- tbl_stack(tbls, group_header = headers) %>%
+  modify_spanning_header(all_stat_cols() ~ "**Cohort**") %>%
+  # modify_caption("**<div align='left'><b>Table 1. Maternal Baseline Characteristics by Category**") %>%
+  modify_footnote(
+    update = list(
+      all_stat_cols() ~ "Values are mean ± standard deviation for continuous; n (%) for categorical; dichotomous variables shown as one line with N (%) for the level == 1."
+    )
+  ) %>%
+  bold_labels() %>%
+  italicize_levels() 
+
+demo_table_grouped <- demo_table_grouped %>%
+  modify_footnote(
+    update = list(
+      stat_2 ~ "In the healthy cohort, variables that are defining eligibility criteria will necessarily be 0 (0%)."
+    )
+  )
+
+# add variable-specific footnotes only if the variables exist in the stacked table
+tb_vars <- demo_table_grouped$table_body$variable %>% unique()
+
+if ("SUBSTANCE_USE" %in% tb_vars) {
+  demo_table_grouped <- demo_table_grouped %>%
+    modify_footnote_body(
+      footnote = "Substance use includes smoking, tobacco or betel nut use, or alcohol at baseline.",
+      columns = "label",
+      rows = variable == "SUBSTANCE_USE"
+    )
+}
+
+
+if (any(c("MUAC_CAT", "MUAC_ENROLL") %in% tb_vars)) {
+  demo_table_grouped <- demo_table_grouped %>%
+    modify_footnote_body(
+      footnote = "MUAC = Mid–upper arm circumference.",
+      columns = "label",
+      rows = variable %in% c("MUAC_CAT", "MUAC_ENROLL")
+    )
+}
+
+gt_tbl <- demo_table_grouped %>%
+  as_gt() %>%
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_row_groups()   # applies to all subheaders
+  )%>%
+  gtsave("baseline_demo.png")
+
+
+## --------------------------
+## Save & trim image (optional)
+## --------------------------
+img_base <- image_read("baseline_demo.png") %>% image_trim()
+image_write(img_base, path = "baseline_demo_trimmed.png")
+```
+
+```{r basetable, out.width='100%', fig.align='left'}
+knitr::include_graphics("baseline_demo_trimmed.png")
+```
+
+\newpage
+
+## Figure 1: Flow diagram illustrating women included in the Healthy Cohort Analysis
+
+```{r,  echo=FALSE, include=FALSE}
+load(file.path(aim1_dfs, "all_screen.rda"))
+load(file.path(aim1_dfs, "df_hb_wide1_hc.rda"))
+load(file.path(aim1_dfs, "df_hb_wide1.rda"))
+load(file.path(aim1_dfs, "df_hb_long1_hc.rda"))
+load(file.path(aim1_dfs, "df_hb_long1.rda"))
+load(file.path(aim2_dfs, "MAT_ENDPOINTS_raw.rda"))
+load(file.path(aim2_dfs, "df_mat_analysis.rda"))
+
+#This is a the flow chart prep
+#Step 1: We want to create subset data for valid hb datasets
+ hb_data <- df_hb_wide1_hc %>% filter (!is.na(PREG_START_DATE)) %>% 
+   mutate (HB_DATA = "Yes")  %>%
+   select (MOMID, PREGID, SITE, HB_DATA)
+ 
+ hb_valid_data <- df_hb_wide1 %>% filter (!is.na(PREG_START_DATE)) %>% 
+   mutate (HB_VALID_DATA = "Yes")  %>%
+   select (MOMID, PREGID, SITE, HB_VALID_DATA)
+ 
+ #Step 2: We want to make sure that each participant has just one exclusion criteria 
+ all_screen_df <- all_screen %>%
+   mutate(
+     # Create a single primary exclusion reason column
+     primary_exclusion = case_when(
+       HEALTHY_ELIGIBLE == 1 & SCREEN_PASS == "Yes" & ENROLL_NO_ISSUES == 1 ~ "eligible",
+       CRIT_INFLAM == 0 ~ "inflammation",
+       CRIT_IRON == 0 ~ "inadequate iron",
+       CRIT_BMI_MUAC  %in% c(0,55) ~ "bmi and muac not met",
+       CRIT_G6PD  %in% c(0,55) ~ "g6pd deficiency",
+       CRIT_HEIGHT  %in% c(0,55) ~ "height-ineligible",
+       CRIT_AGE %in% c(0,55) ~ "age-ineligible",
+       CRIT_UNPL_CESARIAN  %in% c(0,55) ~ "unplanned c-section",
+       CRIT_LBW  %in% c(0,55) ~ "low birth weight",
+       CRIT_SMOKE  %in% c(0,55) ~ "smoking",
+       CRIT_STILLBIRTH  %in% c(0,55) ~ "stillbirth history",
+       CRIT_HIV  %in% c(0,55) ~ "hiv positive",
+       CRIT_MALARIA  %in% c(0,55) ~ "malaria positive",
+       CRIT_DRINK  %in% c(0,55) ~ "alcohol use",
+       CRIT_HEPATITISB  %in% c(0,55) ~ "hepatitis b positive",
+       CRIT_HEPATITISC  %in% c(0,55) ~ "hepatitis c positive",
+       CRIT_SINGLEPREG  %in% c(0,55) ~ "not singleton pregnancy",
+       CRIT_CHRONIC %in% c(0,55) ~ "chronic disease",
+       CRIT_BP  %in% c(0,55) ~ "high blood pressure",
+       CRIT_HEMOGLOBINOPATHIES == 0 ~ "hemoglobinopathy",
+       TRUE ~ "other reasons" ) ) %>% 
+   left_join(hb_data, by = c("MOMID","PREGID","SITE")) %>% 
+   left_join(hb_valid_data, by = c("MOMID","PREGID","SITE")) %>% 
+    mutate( PRESCREEN_PASS = case_when(
+           REMAPP_PRESCRN == 1 & SCREEN == 1 & ELIGIBLE == 1 ~ "Yes",
+            TRUE ~ PRESCREEN_PASS))
+ 
+ 
+    
+  exclusion_counts <- all_screen_df %>%
+    filter(HEALTHY_ELIGIBLE == 0 & ENROLL_NO_ISSUES == 1 & SCREEN_PASS == "Yes") %>%
+    ungroup()  %>%
+    count(primary_exclusion, name = "count") %>%
+    arrange(desc(count))
+  
+  non_valid_hb <- df_hb_long1_hc %>%
+    filter(ga_wks < 5 | hb < 5 | hb > 18) %>%
+    mutate(sec_exclusion = case_when(
+      ga_wks < 5 ~ " gestational age < 6wks",
+      hb < 5 | hb > 18 ~ " with outlier hemoglobin values",
+      TRUE ~ NA_character_)) %>%
+    ungroup() %>%
+    count(sec_exclusion, name = "count") %>%
+    arrange(desc(count))
+  
+  missing_hb <- all_screen_df %>%
+    filter(HEALTHY_ELIGIBLE == 1) %>%
+    filter(is.na(HB_DATA)) %>%
+    mutate(sec_exclusion =  " with no hemoglobin data") %>%
+    ungroup() %>%
+    count(sec_exclusion, name = "count") 
+ 
+exclusion_analysis <- bind_rows(missing_hb, non_valid_hb) 
+total_hb_measurements <- sum(!is.na(df_hb_long1$hb), na.rm = TRUE)
+
+
+#FLOWCHART EXCLUSION CRITERIA CODE ----
+## 1: Pre-screening exclusions ----
+
+step1_df <- all_screen_df %>%
+  # keep only rows that actually have a prescreen exclusion
+  filter(!is.na(PRESCREEN_EXCL_REASON),
+         PRESCREEN_EXCL_REASON != 77) %>%   # drop those who passed prescreen
+  count(reason = PRESCREEN_EXCL_REASON_LABEL, name = "n")
+
+step1_exc_lines <- step1_df %>%
+  filter(n > 0) %>%
+  arrange(desc(n)) %>%
+  mutate(line = paste0(n, " ", reason)) %>%
+  pull(line)
+
+print(step1_exc_lines)
+
+## 2: Screening exclusions ----
+step2_df <- all_screen_df %>%
+  # keep only rows that have a screening exclusion
+  filter(!is.na(SCREEN_EXCL_REASON),
+         SCREEN_EXCL_REASON != 77) %>%   # drop those who passed screening
+  count(reason = SCREEN_EXCL_REASON_LABEL, name = "n")
+
+step2_exc_lines <- step2_df %>%
+  filter(n > 0) %>%
+  arrange(desc(n)) %>%
+  mutate(line = paste0(n, " ", reason)) %>%
+  pull(line)
+
+print(step2_exc_lines)
+
+#Step 3 
+# Create the flowchart with clean number-reason format
+flow <- all_screen_df %>%
+  as_fc(
+    label = "Women Interviewed (Screened)",
+    text_fs = 10,
+    text_pattern = "{label}\n{N}",
+    text_color = "black",
+    bg_fill = "#ebfcf9",
+    border_color = "#016795"
+  ) %>%
+  
+  # Prescreening step
+  fc_filter(
+    PRESCREEN_PASS == "Yes",
+    label = "Met Prescreening Criteria",
+    show_exc = TRUE,
+    text_fs_exc = 9,
+    text_fs = 10,
+    text_color = "black",
+    bg_fill = "#ebfcf9",
+    border_color = "#016795",
+    text_color_exc = "black",
+    bg_fill_exc = "#f2fafa",
+    border_color_exc = "#9edee0",
+    text_pattern = "{label}\n n={n}",
+    text_pattern_exc = "{label}\n n={n}",
+    just_exc = "left",
+    offset_exc = 0.08,
+    label_exc        = paste(
+      "Did not meet screening criteria:",
+      paste(step1_exc_lines, collapse = "\n"),
+      sep = "\n"
+    )
+  ) %>%
+  
+  # Screening step
+  fc_filter(
+    SCREEN_PASS == "Yes" & PRESCREEN_PASS == "Yes" & ENROLL_NO_ISSUES == 1,
+    label = "Eligible for ReMAPP Analysis",
+    show_exc = TRUE,
+    text_fs_exc = 9,
+    text_fs = 10,
+    text_color = "black",
+    bg_fill = "#ebfcf9",
+    border_color = "#016795",
+    text_color_exc = "black",
+    bg_fill_exc = "#f2fafa",
+    border_color_exc = "#9edee0",
+    text_pattern = "{label}\n n={n}",
+    text_pattern_exc = "{label}\n n={n}",
+    just_exc = "left",
+    offset_exc = 0.08,
+    label_exc        = paste(
+      "Did not meet screening criteria:",
+      paste(step2_exc_lines, collapse = "\n"),
+      sep = "\n"
+    )
+  ) %>%
+  fc_filter(
+    HEALTHY_ELIGIBLE == 1 & ENROLL_NO_ISSUES == 1,
+    label = "Healthy Cohort Eligible",
+    text_pattern = "{label}\n n={n}",
+    text_color = "black",
+    bg_fill = "#ebfcf9",
+    border_color = "#016795",
+    text_color_exc = "black",
+    bg_fill_exc = "#f2fafa",
+    border_color_exc = "#9edee0",
+    text_pattern_exc = "{label}\n n={n}",
+    just_exc = "left",
+    text_fs_exc = 9,
+    text_fs = 10,
+    show_exc = TRUE,
+    offset_exc = 0.08,
+    label_exc = paste0(
+      "Excluded from healthy cohort:\n",
+      paste(exclusion_counts$count, exclusion_counts$primary_exclusion, collapse = "\n")
+    )
+  ) %>%
+  
+  fc_filter(
+    HEALTHY_ELIGIBLE == 1 & HB_DATA == "Yes" & HB_VALID_DATA == "Yes",
+    label = paste0(
+      "Women with at least\none valid hb value and\nno GA outlier\n"),
+    text_pattern = "{label} n={n} \n (Total hemoglobin \n measurements=  {total_hb_measurements}) ",
+    text_pattern_exc = "{label}\n n={n}",
+    text_color = "black",
+    bg_fill = "#ebfcf9",
+    border_color = "#016795",
+    text_color_exc = "black",
+    bg_fill_exc = "#f2fafa",
+    border_color_exc = "#9edee0",
+    just_exc = "left",
+    text_fs_exc = 9,
+    text_fs = 10,
+    show_exc = TRUE,
+    offset_exc = 0.08,
+    label_exc = paste0(
+      "Excluded from analysis:\n",
+      paste(exclusion_analysis$count, exclusion_analysis$sec_exclusion, collapse = "\n")
+    )
+  )
+
+# Draw the flowchart
+flowchart <- flow %>%
+  fc_draw(
+    box_corners = "round",
+    title = "Participant Screening Flowchart",
+    title_fs = 16,
+    title_color = "black",
+    arrow_angle = 18
+  )
+
+# Export to PNG
+fc_export(
+  flowchart,
+  filename = "flowchart.png",
+  width = 6500,
+  height = 10500,
+  units = "px",
+  res = 550
+)
+
+
+# Trim whitespace
+img <- image_read("flowchart.png") %>%
+  image_trim()
+
+image_write(img, path = "flowchart_trimmed.png")
+
+```
+
+```{r flowchart, out.width='90%', out.height = '90%', fig.align='center'}
+knitr::include_graphics("flowchart_trimmed.png")
+```
+
+## Figure 2: Flow diagram illustrating women included in the Full Cohort Analysis
+
+```{r, echo=FALSE, include=FALSE}
+
+#Setup
+library(dplyr)
+library(magrittr)
+library(labelled)
+library(haven)
+
+
+
+# ---- Data prep ----
+#This is a the flow chart prep  
+#We have the data for all_screen_df from flow chart 1, so we skip that step
+#We want to create a dataset for moms, and babies
+#Subset enrolled participants first
+
+load(file.path(aim2_dfs, "df_inf_analysis.rda"))
+load(file.path(aim2_dfs, "df_mat_analysis.rda"))
+
+enrolled_remapp <- all_screen_df %>%
+  ungroup() %>%
+  left_join(df_mat_analysis, by = c("MOMID","PREGID","SITE")) %>% 
+  filter(ENROLL_NO_ISSUES == 1 & SCREEN_PASS == "Yes") %>%
+  mutate(across(where(is.labelled), zap_labels)) %>%
+  distinct(MOMID, PREGID, SITE, .keep_all = TRUE)
+
+mat_analysis <- enrolled_remapp %>%
+  ungroup() %>%
+  filter(PREG_END_ENROLLED == 1)
+
+# If df_inf_analysis already exists in your environment, keep it.
+
+# Precompute branch counts
+n_maternal <- sum(mat_analysis$PREG_END_ENROLLED == 1, na.rm = TRUE)
+n_infant   <- sum(df_inf_analysis$LIVEBIRTH %in% c(0,1), na.rm = TRUE)
+
+# ---- Optional: compute exclusion reason lines up front (clearer & safer) ----
+# Use all_screen_df consistently (not all_screen)
+## 1: Pre-screening exclusions ----
+
+step1_df <- all_screen_df %>%
+  # keep only rows that actually have a prescreen exclusion
+  filter(!is.na(PRESCREEN_EXCL_REASON),
+         PRESCREEN_EXCL_REASON != 77) %>%   # drop those who passed prescreen
+  count(reason = PRESCREEN_EXCL_REASON_LABEL, name = "n")
+
+step1_exc_lines <- step1_df %>%
+  filter(n > 0) %>%
+  arrange(desc(n)) %>%
+  mutate(line = paste0(n, " ", reason)) %>%
+  pull(line)
+
+print(step1_exc_lines)
+
+## 2: Screening exclusions ----
+step2_df <- all_screen_df %>%
+  # keep only rows that have a screening exclusion
+  filter(!is.na(SCREEN_EXCL_REASON),
+         SCREEN_EXCL_REASON != 77) %>%   # drop those who passed screening
+  count(reason = SCREEN_EXCL_REASON_LABEL, name = "n")
+
+step2_exc_lines <- step2_df %>%
+  filter(n > 0) %>%
+  arrange(desc(n)) %>%
+  mutate(line = paste0(n, " ", reason)) %>%
+  pull(line)
+
+print(step2_exc_lines)
+
+## 3: Eligible moms exclusions ----
+step3_df <- all_screen_df %>%
+  # only where we set an incomplete pregnancy reason
+  filter(!is.na(ELIGIBLE_EXCL_REASON)) %>%
+  count(reason = ELIGIBLE_EXCL_REASON_LABEL, name = "n")
+
+step3_exc_lines <- step3_df %>%
+  filter(n > 0) %>%
+  arrange(desc(n)) %>%
+  mutate(line = paste0(n, " ", reason)) %>%
+  pull(line)
+
+print(step3_exc_lines)
+
+
+# Build a SINGLE flow, then split, then draw 
+flow_aim2 <- all_screen_df %>%
+  as_fc(
+    label         = "Women Interviewed (Screened)",
+    text_fs       = 10,
+    text_pattern  = "{label}\n{N}",
+    text_color    = "black",
+    bg_fill       = "white",
+    border_color  = "black"
+  ) %>%
+
+  # Step 1: Prescreen
+  fc_filter(
+    PRESCREEN_PASS == "Yes",
+    label            = "Met Prescreening Criteria",
+    show_exc         = TRUE,
+    text_fs_exc      = 9,
+    text_fs          = 10,
+    text_color       = "black",
+    bg_fill          = "white",
+    border_color     = "black",
+    text_color_exc   = "black",
+    bg_fill_exc      = "white",
+    border_color_exc = "gray50",
+    text_pattern     = "{label}\n n={n}",
+    text_pattern_exc = "{label}\n n={n}",
+    just_exc         = "left",
+    offset_exc       = 0.08,
+    label_exc        = paste(
+      "Did not meet prescreening criteria:",
+      paste(step1_exc_lines, collapse = "\n"),
+      sep = "\n"
+    )
+  ) %>%
+
+  # Step 2: Screening enrollment
+  fc_filter(
+    SCREEN_PASS == "Yes" &
+    ENROLL_NO_ISSUES == 1 &
+    SCREEN_DENOM == 1,
+    label = "Eligible women \nenrolled in PRISMA",
+    show_exc         = TRUE,
+    text_fs_exc      = 9,
+    text_fs          = 10,
+    text_color       = "black",
+    bg_fill          = "white",
+    border_color     = "black",
+    text_color_exc   = "black",
+    bg_fill_exc      = "white",
+    border_color_exc = "gray50",
+    text_pattern     = "{label}\n n={n}",
+    text_pattern_exc = "{label}\n n={n}",
+    just_exc         = "left",
+    offset_exc       = 0.08,
+    label_exc        = paste(
+      "Did not meet screening criteria:",
+      paste(step2_exc_lines, collapse = "\n"),
+      sep = "\n"
+    )
+  ) %>%
+
+  # Step 3: Pregnancy End
+  fc_filter(
+    SCREEN_PASS == "Yes" &
+      ENROLL_NO_ISSUES == 1 &
+      SCREEN_DENOM == 1 &
+      PREG_END_ENROLLED == 1,
+    label = "Enrolled participants \nwith a pregnancy\n outcome",
+    show_exc         = TRUE,
+    text_fs_exc      = 9,
+    text_fs          = 10,
+    text_color       = "black",
+    bg_fill          = "white",
+    border_color     = "black",
+    text_color_exc   = "black",
+    bg_fill_exc      = "white",
+    border_color_exc = "gray50",
+    text_pattern     = "{label}\n n={n}",
+    text_pattern_exc = "{label}\n n={n}",
+    just_exc         = "left",
+    offset_exc       = 0.08,
+    label_exc        = paste(
+      "Participants excluded due to:",
+      paste(step3_exc_lines, collapse = "\n"),
+      sep = "\n"
+    )
+  ) %>%
+  fc_draw()
+
+split_rows <- tibble(dummy = seq_len(n_maternal + n_infant))
+
+flow_split <- split_rows %>%
+  as_fc(label = paste0("Parallel analysis data count\n for maternal and infants outcomes"),  
+    text_pattern = "{label}",  # prints nothing visible
+    text_fs      = 10,        # tiny, keeps box height minimal
+    text_color   = "black",  # invisible
+    bg_fill      = "#ffffff",  # invisible
+    border_color = "#ffffff" 
+  ) %>%
+  fc_split(
+    N = c(n_maternal, n_infant),
+    label = c(
+      paste0("All intrapartum records included in\nmaternal outcome analysis\n (mothers)"),
+      paste0("All births recorded and included in\ninfant outcome analysis\n(livebirths & stillbirths)")
+    ),
+    text_pattern = "{label}\n {n}",
+    text_fs      = 10,
+    text_color       = "black",
+    bg_fill          = "#ebfcf9",
+    border_color     = "#016795") %>%
+    fc_draw(
+    box_corners = "sharp",
+    arrow_angle = 18
+  )
+
+
+list_all <- list(flow_aim2, flow_split)
+
+flowchart_2 <- fc_stack(fcs = list_all, unite = TRUE) %>%
+  fc_draw(
+     arrow_length = grid::unit(0.1, "inches"),
+    box_corners = "round",
+    title = "ReMAPP Aim 2 Analysis Flowchart",
+    title_fs = 16,
+    title_color = "black",
+    arrow_angle = 18)
+
+# Export to PNG
+fc_export(
+  flowchart_2,
+  filename = "flowchart_2.png",
+  width = 6500,
+  height = 9500,
+  units = "px",
+  res = 550
+)
+
+# Trim whitespace
+img_2 <- image_read("flowchart_2.png") %>%
+  image_trim()
+
+image_write(img_2, path = "flowchart_trimmed_aim2.png")
+
+```
+
+```{r flowchart2, out.width='100%', fig.height=8, fig.align='center'}
+knitr::include_graphics("flowchart_trimmed_aim2.png")
+```
+
+\newpage
+
+```{r, echo=FALSE, include=FALSE}
+
+datasets <- list.files(aim2_dfs, pattern = "^df_(inf_|mat_).*\\.rda$", full.names = TRUE)
+for (data in datasets) {
+  load(data)
+}
+
+
+# For infant outcomes
+infant_outcome_info <- list(
+    list(data = df_inf_mortality, outcome_var = "neo_mortality", label = "Neonatal Mortality"),
+  list(data = df_inf_preterm37, outcome_var = "preterm37", label = "Preterm <37wks"),
+  list(data = df_inf_preterm34, outcome_var = "preterm34", label = "Preterm <34wks"),
+  list(data = df_inf_lbw2500, outcome_var = "lbw2500", label = "LBW <2500g"),
+  list(data = df_inf_lbw1500, outcome_var = "lbw1500", label = "LBW <1500g"),
+  list(data = df_inf_sga10, outcome_var = "sga10", label = "SGA <10th percentile"),
+  list(data = df_inf_sga3, outcome_var = "sga3", label = "SGA <3rd percentile"),
+  list(data = df_inf_stillbirth20, outcome_var = "inf_stillbirth20", label = "Stillbirth 20wks"),
+  list(data = df_inf_stillbirth28, outcome_var = "inf_stillbirth28", label = "Stillbirth 28wks"),
+  list(data = df_inf_psbi, outcome_var = "inf_psbi", label = "Neonatal PSBI"),
+  list(data = df_inf_asph, outcome_var = "inf_asph", label = "Birth Asphyxia")
+)
+
+# For maternal outcomes
+maternal_outcome_info <- list(
+    list(data = df_mat_compo, outcome_var = "mat_out_compo", label = "Maternal Composite Outcome"),
+    
+  list(data = df_mat_pph, outcome_var = "HEM_PPH", label = "Postpartum hemorrhage"),
+  list(data = df_mat_ppa_pnc6, outcome_var = "ppa_pnc6", label = "PPA by PNC6"),
+  list(data = df_mat_ppa_pnc26, outcome_var = "ppa_pnc26", label = "PPA by PNC26"),
+  list(data = df_mat_pprom, outcome_var = "pprom", label = "PPROM"),
+  list(data = df_mat_preclamp, outcome_var = "preclamp", label = "Preeclampsia"))
+  list(data = df_mat_anc_dpr, outcome_var = "depress", label = "Depression (ANC)")
+  # list(data = df_mat_pnc_dpr, outcome_var = "depress", label = "Depression (PNC)"),
+  # list(data = df_mat_anc_fat, outcome_var = "fatigued", label = "Fatigued (ANC)"),
+  # list(data = df_mat_pnc_fat, outcome_var = "fatigued", label = "Fatigued (PNC)")
+
+# ---- Summarizers (no CI; prevalence shown as n(%)) ----
+summarize_outcome_mat <- function(data, outcome_var, outcome_name, hb_var = "hb") {
+  data_clean <- data %>%
+    filter(!is.na(.data[[outcome_var]]), .data[[hb_var]] > 0) %>%
+    select(MOMID, PREGID, SITE, .data[[outcome_var]], .data[[hb_var]]) %>%
+    distinct() %>%
+    ungroup()
+  
+  total_n <- nrow(data_clean)
+  yes_n   <- sum(data_clean[[outcome_var]] == 1, na.rm = TRUE)
+  pct     <- if (total_n > 0) 100 * yes_n / total_n else NA_real_
+  
+  stats_yes <- data_clean %>%
+    filter(.data[[outcome_var]] == 1) %>%
+    summarise(mean_hb = mean(.data[[hb_var]], na.rm = TRUE),
+              sd_hb   = sd(.data[[hb_var]], na.rm = TRUE),
+              .groups = "drop")
+  
+  tibble(
+    Cohort = "Maternal",
+    Outcome = outcome_name,
+    N = total_n,
+    `Yes, n(%)` = if (is.na(pct)) "—" else sprintf("%d (%.1f%%)", yes_n, pct),
+    `Hb (Yes), mean ± SD` = if (total_n > 0 && yes_n > 0)
+      sprintf("%.1f ± %.2f", round(stats_yes$mean_hb, 1), round(stats_yes$sd_hb, 2)) else "—"
+  )
+}
+
+summarize_outcome_inf <- function(data, outcome_var, outcome_name, hb_var = "hb") {
+  data_clean <- data %>%
+    filter(!is.na(.data[[outcome_var]]), .data[[hb_var]] > 0) %>%
+    select(MOMID, PREGID, INFANTID, SITE, .data[[outcome_var]], .data[[hb_var]]) %>%
+    distinct() %>%
+    ungroup()
+  
+  total_n <- nrow(data_clean)
+  yes_n   <- sum(data_clean[[outcome_var]] == 1, na.rm = TRUE)
+  pct     <- if (total_n > 0) 100 * yes_n / total_n else NA_real_
+  
+  stats_yes <- data_clean %>%
+    filter(.data[[outcome_var]] == 1) %>%
+    summarise(mean_hb = mean(.data[[hb_var]], na.rm = TRUE),
+              sd_hb   = sd(.data[[hb_var]], na.rm = TRUE),
+              .groups = "drop")
+  
+  tibble(
+    Cohort = "Infant",
+    Outcome = outcome_name,
+    N = total_n,
+    `Yes, n(%)` = if (is.na(pct)) "—" else sprintf("%d (%.1f%%)", yes_n, pct),
+    `Hb (Yes), mean ± SD` = if (total_n > 0 && yes_n > 0)
+      sprintf("%.1f ± %.2f", round(stats_yes$mean_hb, 1), round(stats_yes$sd_hb, 2)) else "—"
+  )
+}
+
+# ---- Build both tables, then bind ----
+infant_summary_table <- bind_rows(lapply(infant_outcome_info, function(x) {
+  summarize_outcome_inf(x$data, x$outcome_var, x$label)
+}))
+
+maternal_summary_table <- bind_rows(lapply(maternal_outcome_info, function(x) {
+  summarize_outcome_mat(x$data, x$outcome_var, x$label)
+}))
+
+combined_table <- bind_rows(maternal_summary_table, infant_summary_table) %>%
+  mutate(Cohort = factor(Cohort, levels = c("Maternal", "Infant")))
+
+library(dplyr)
+library(gt)
+
+# Rename cohort groups to the exact headers you want
+tbl_for_gt <- combined_table %>%
+  mutate(
+    Cohort = dplyr::recode(Cohort,
+                           "Maternal" = "Maternal Outcomes",
+                           "Infant"   = "Infant Outcomes"
+    )
+  ) %>%
+  arrange(Cohort, Outcome) %>%
+  rename(
+    `n(%)`           = `Yes, n(%)`,
+    `Mean Hb ± SD`   = `Hb (Yes), mean ± SD`
+  ) %>%
+  select(Cohort, Outcome, N, `n(%)`, `Mean Hb ± SD`)
+
+tb_outcomes_all <-
+  tbl_for_gt %>%
+  gt(groupname_col = "Cohort") %>%
+  # tab_header(
+  #   title = md("**Table. Prevalence of Maternal and Infant Outcomes (ReMAPP)**")
+  # ) %>%
+  cols_label(
+    Outcome        = md("**Outcome**"),
+    N              = md("**Total (N)**"),
+    `n(%)`         = md("**n(%)**"),
+    `Mean Hb ± SD` = md("**Mean Hb ± SD**")
+  ) %>%
+  # Spanner headers
+  tab_spanner(label = md("**Total (N)**")) %>%
+  tab_spanner(label = md("**Participants with outcome**"), columns = c(`n(%)`, `Mean Hb ± SD`)) %>%
+  # Journal styling
+  tab_options(
+    table.font.names = c("Arial", "Helvetica", "Liberation Sans", "sans-serif"),
+    table.font.size = 12,
+    #data_row.padding = px(4),
+    #table.border.top.width = px(1),
+    table.border.top.color = "black",
+    #table.border.bottom.width = px(1),
+    table.border.bottom.color = "black",
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "white",
+    heading.background.color = "white"
+  ) %>%
+  opt_row_striping() %>%
+  cols_align(align = "left", columns = c(Outcome)) %>%
+  cols_align(align = "center", columns = c(N, `n(%)`, `Mean Hb ± SD`)) %>%
+  fmt_number(columns = N, decimals = 0) %>%
+  tab_options(
+    table.layout = "fixed",      # respect set column widths
+    table.width  = pct(60),      # shrink whole table (try 70–90%)
+    table.align  = "center"
+  ) %>%
+  # ---- Make row-group headers bold ----
+tab_style(
+  style = cell_text(weight = "bold"),
+  locations = cells_row_groups(groups = c("Maternal Outcomes", "Infant Outcomes"))
+) %>%
+  # ---- Footnotes ----
+# (a) Maternal Composite Outcome definition (attach to that specific row in Outcome column)
+tab_footnote(
+  footnote = "Maternal composite outcome: maternal death, any life-threatening 
+  condition during pregnancy or within 42 days postpartum, 
+  severe complications or critical interventions",
+  locations = cells_body(
+    columns = Outcome,
+    rows = Outcome == "Maternal Composite Outcome"
+  )
+) %>%
+  # (b) Abbreviations for PPA and PPROM (attach to the first matching PPA/PPROM row)
+  tab_footnote(
+    footnote = "Abbreviations: PPA = Postpartum Anemia; PPROM = Preterm Premature Rupture of Membranes.;LBW = Low Birth Weight;PSBI = Possible Serious Bacterial Infection; SGA = Small for Gestational Age; Hb = hemoglobin (g/dL).",
+    locations = list(
+      cells_body(columns = Outcome, rows = grepl("^PPA\\b", Outcome)),
+      cells_body(columns = Outcome, rows = grepl("\\bPPROM\\b", Outcome)),
+       cells_body(columns = Outcome, rows = grepl("\\bLBW\\b", Outcome)),
+       cells_body(columns = Outcome, rows = grepl("\\bPSBI\\b", Outcome)),
+       cells_body(columns = Outcome, rows = grepl("\\bSGA\\b", Outcome)),
+      cells_column_labels(columns = `Mean Hb ± SD`)
+    )
+  ) %>%
+  # (c) General note about varying totals
+  tab_source_note(
+    md("*Totals (N) may differ by outcome due to data availability and missingness.*")
+  )
+
+print (tb_outcomes_all)
+
+# Save high-res PNG
+gtsave(tb_outcomes_all, filename = "tb_outcomes_all.png")
+
+```
+
+# Table 2: Prevalence of ReMAPP outcomes in the full cohort of participants
+
+```{r, echo=FALSE, out.height='100%', out.width='100%', fig.align='left'}
+
+knitr::include_graphics("tb_outcomes_all.png")
+```
+
+\newpage
+
+# Aim 1 Results
+
+```{r, echo=FALSE}
+# use long format data
+load(file.path(aim1_dfs, "df_sensitive_long.rda"))
+
+df_fpr <- df_sensitive_long %>% dplyr :: select(SITE, ga_wks, hb, preterm37_mom) %>% 
+  mutate(preterm37_mom = ifelse(!is.na(preterm37_mom), preterm37_mom, 55)) %>%
+  filter(!is.na(hb) & !is.na(ga_wks)) %>% 
+  mutate(range = (max(ga_wks) - min(ga_wks)))
+
+```
+
+```{r}
+# call package gamlss to fit FPR model
+library(gamlss)
+
+# fit a second-order FPR model
+con <- gamlss.control(trace = FALSE) 
+
+fpr_fun <- function(data) {
+  gamlss(
+  hb ~ fp(ga_wks, 2),  
+  sigma.fo = ~ fp(ga_wks, 2), 
+  data = data, control = con
+)
+}
+
+fpr_mod_pooled <- fpr_fun(df_fpr)
+```
+
+```{r}
+# get model coefficients for mean and sigma
+tb_coef_fun <- function(model) {
+  data.frame(
+  Parameter = c("\U03BC", "\U03C3"), 
+  Intercept1 = c(model$mu.coefficients[[1]], model$sigma.coefficients[[1]]),
+  Intercept2 = c(getSmo(model, what = "mu")$coef[[1]], 
+                 getSmo(model, what = "sigma")$coef[[1]]), 
+  coefficient1 = c(getSmo(model, what = "mu")$coef[[2]], 
+                   getSmo(model, what = "sigma")$coef[[2]]),
+  coefficient2 = c(getSmo(model, what = "mu")$coef[[3]], 
+                   getSmo(model, what = "sigma")$coef[[3]]), 
+  Linkfun = c(model$mu.link, 
+              model$sigma.link))
+}
+
+tb_coef_pooled <- tb_coef_fun(fpr_mod_pooled)
+  
+```
+
+```{r}
+# get model polynomial powers for mean and sigma
+tb_power_fun <- function(model) {
+  rbind(
+  getSmo(model, what = "mu")$power,
+  getSmo(model, what = "sigma")$power
+) %>%
+  as.data.frame() %>%
+  add_column(c("\U03BC", "\U03C3"), .before = 1) %>%
+  rename_with(~ c("Parameter", "power1", "power2"), c(1:3))
+} 
+
+tb_power_pooled <- tb_power_fun(fpr_mod_pooled)
+
+```
+
+```{r, results='hide'}
+
+scale = unique(10*(sign(log10(df_fpr$range)))*trunc(abs(log10(df_fpr$range))))
+
+tb_coef_pooled
+tb_power_pooled
+#building the equation into the report
+build_equation <- function(tb_coef, tb_power, parameter_label) {
+  # Get the row for the given parameter
+  coef_row <- tb_coef %>% dplyr::filter(Parameter == parameter_label)
+  power_row <- tb_power %>% dplyr::filter(Parameter == parameter_label)
+  
+  # Check if rows were found
+  if (nrow(coef_row) == 0 || nrow(power_row) == 0) {
+    warning(paste("No data found for parameter:", parameter_label))
+    return("")
+  }
+  
+  # Extract coefficients with safety checks
+  coefs <- c(
+    ifelse(is.null(coef_row$Intercept1), 0, coef_row$Intercept1),
+    ifelse(is.null(coef_row$Intercept2), 0, coef_row$Intercept2),
+    ifelse(is.null(coef_row$coefficient1), 0, coef_row$coefficient1),
+    ifelse(is.null(coef_row$coefficient2), 0, coef_row$coefficient2)
+  )
+  
+  # Extract powers with safety checks
+  powers <- c(
+    0,  # Intercept1 power
+    0,  # Intercept2 power
+    ifelse(is.null(power_row$power1), 1, power_row$power1),
+    ifelse(is.null(power_row$power2), 1, power_row$power2)
+  )
+  
+  # Initialize equation parts
+  equation_parts <- character(0)
+  
+  # Helper function to format terms
+  format_term <- function(coef, power, is_log = FALSE) {
+    if (coef == 0) return(NULL)
+    
+    abs_coef <- sprintf("%.2f", round(abs(coef), 2)) # Format to 2 decimal places
+    sign <- ifelse(coef >= 0, " + ", " - ")
+    
+    term <- if (power == 0) {
+      abs_coef
+    } else {
+      
+power_str <- if (power == 1) {
+  ""
+} else if (power == 2) {
+  "\u00B2"  # Unicode for superscript 2
+} else if (power == 3) {
+  "\u00B3"  # Unicode for superscript 3
+} else if (power == -1) {
+  "\u207B\u00B9"  # superscript minus + 1
+} else if (power == -2) {
+  "\u207B\u00B2"  # superscript minus + 2
+} else if (power == -3) {
+  "\u207B\u00B3"  # superscript minus + 3
+} else {
+  paste0("^", power)
+}
+      
+      
+      ga_term <- paste0("(GA/10)", power_str)
+      if (is_log) ga_term <- paste0(ga_term, "log(GA/10)")
+      paste0(abs_coef, ga_term)
+    }
+    
+    # For first term, don't include sign if positive
+    if (length(equation_parts) == 0 && sign == " + ") {
+      term
+    } else {
+      paste0(sign, term)
+    }
+  }
+  
+  # Build terms in order
+  if (!is.na(coefs[1])) equation_parts <- c(equation_parts, format_term(coefs[1], powers[1]))
+  if (!is.na(coefs[2])) equation_parts <- c(equation_parts, format_term(coefs[2], powers[2]))
+  if (!is.na(coefs[3])) equation_parts <- c(equation_parts, format_term(coefs[3], powers[3]))
+  if (!is.na(coefs[4])) equation_parts <- c(equation_parts, format_term(coefs[4], powers[4], 
+                                          is_log = (parameter_label == "\u03C3")))
+  
+  # Combine all parts
+  equation <- paste(equation_parts, collapse = "")
+  
+  # Clean up any leading/trailing whitespace
+  equation <- trimws(equation)
+  
+  return(equation)
+}
+
+
+pool_eq_1 = build_equation(tb_coef_pooled, tb_power_pooled, "\u03BC")
+pool_eq_2 = build_equation(tb_coef_pooled, tb_power_pooled, "\u03C3")
+
+```
+
+<!-- *pooled -->
+
+*The FPR model for* $\mu$ and $\sigma$ are
+
+\begin{center}
+$\mu = `r pool_eq_1`$
+\end{center}
+
+*and*
+
+\begin{center}
+$\log(\sigma) = `r pool_eq_2`$
+\end{center}
+
+*respectively.*
+
+## Figure 3: Gestational-age-specific hemoglobin centile curves
+
+Hemoglobin centile curves ( 5, 50, 95th centiles), based on a fractional
+polynomial regression model among the healthy cohort, and WHO 2024
+trimester-specific hemoglobin thresholds for defining anemia
+
+```{r centile plot pooled,  results='hide'}
+# make centile plots based on the fitted FPR model
+centiles_fun_journal <- function(model, data, title = NULL, file = NULL,
+                                 width_px = 2000, height_px = 1500, res = 300) {
+  if (!is.null(file)) png(file, width = width_px, height = height_px, res = res)
+  op <- par(mar = c(4.2, 4.8, 1.2, 0.8), mgp = c(2.3, 0.7, 0), tck = -0.012, family = "sans")
+  on.exit({ par(op); if (!is.null(file)) dev.off() }, add = FALSE)
+
+  # exact colors in centile order: 5th (blue), 50th (green), 95th (red)
+  col_cent <- c("#d62728","#2ca02c","#1f77b4")   # 5th, 50th, 95th
+  lwd_cent <- c(1.6, 2.2, 1.6)
+
+  centiles(
+    model,
+    xvar      = data$ga_wks,
+    cent      = c(5, 50, 95),
+    legend    = FALSE,
+    xlab      = "Gestational age (weeks)",
+    ylab      = "Hemoglobin (g/dL)",
+    main      = if (is.null(title)) "" else title,
+    bg        = "transparent",
+    xlim      = c(8, 38),
+    ylim      = c(8, 16),
+
+    # hide raw points
+    pch       = 15,
+    cex       = 0.2,
+    col       = "grey86",
+
+    # colored centile lines
+    col.cent  = col_cent
+    # , lwd.cent = lwd_cent   # uncomment if your centiles() supports it
+  )
+
+# WHO stepwise threshold (now aligned to 8–38)
+  segments(x0 = 8,  y0 = 11.0, x1 = 14, y1 = 11.0, col = "black", lty = 2)
+  segments(x0 = 14, y0 = 10.5, x1 = 27, y1 = 10.5, col = "black", lty = 2)
+  segments(x0 = 27, y0 = 11.0, x1 = 36, y1 = 11.0, col = "black", lty = 2)
+
+  # Optional labels for WHO plateaus
+  text(x = 8.5,  y = 11.3,  "11",   col = "black", cex = 0.66)
+  text(x = 22, y = 10.8,  "10.5", col = "black", cex = 0.66)
+  text(x = 34.5, y = 11.3,  "11",   col = "black", cex = 0.66)
+
+  legend("topright", inset = 0.01,
+         legend = c("5th centile", "50th centile", "95th centile", "WHO threshold"),
+         col    = c(col_cent, "black"),
+         cex = 0.8,
+         lty = c(1, 1, 1, 2))
+}
+
+# Call (remove the unsupported `use_color` arg)
+centiles_fun_journal(
+  model = fpr_mod_pooled,
+  data  = df_fpr,
+  title = "",
+  file  = "centiles_fig.png",
+  width_px = 2000, height_px = 1500, res = 300
+)
+
+
+```
+
+```{r, echo=FALSE, out.width="100%", fig.width=8, fig.height=8}
+
+knitr::include_graphics("centiles_fig.png")
+```
+
+Figure 3 shows the distribution of hemoglobin concentrations by
+gestational age in the healthy cohort. The solid lines represent
+specific percentiles (5th, 50th, 95th), while the dashed, black line
+indicates the current WHO trimester-specific cutoffs. The WHO cutoff for
+anemia aligns most closely with the 50th percentile of the cohort
+distribution.
+
+```{r centile table pooled, results="hide"}
+#make centile table (similar to table 3 in Ohuma paper)
+tb_pred_fun <- function(model, data) {
+  centiles.pred(model, data = data,
+  xname = "ga_wks", xvalues = c(8:38), 
+  type = c("centiles"), cent = c(5, 50, 95)
+) %>%
+  round(1) 
+}
+
+tb_sm_cent_pooled <- tb_pred_fun(fpr_mod_pooled, df_fpr)
+
+tb_sm_cent_pooled <- tb_sm_cent_pooled %>%
+  rename(
+    `Gestational age (exact week)` = x,
+    `5th centile` = `5`,
+    `50th centile` = `50`,
+    `95th centile` = `95`) %>%
+  mutate(`Gestational age (exact week)` = paste0(`Gestational age (exact week)`, " weeks + 0 days")) %>%
+  select(`Gestational age (exact week)`, `5th centile`,`50th centile`, `95th centile`)
+
+ga_summary <- df_fpr %>%
+  mutate(
+    GA_days_total = round(ga_wks * 7),           # Exact days
+    GA_WKS_INT = floor(GA_days_total / 7),        # How many full weeks
+    GA_LABEL = paste0(GA_WKS_INT, " weeks + 0 days")  # Label weeks + 0 days
+  ) %>%
+  count(GA_LABEL) %>%
+  rename(`Gestational age (exact week)` = GA_LABEL,
+         n = n)
+
+```
+
+```{r, out.width='100%', out.height='100%'}
+
+# Ensure GA rows are in order (8 → 38) and columns are typed as needed
+tb_sm_cent_pooled_final <- tb_sm_cent_pooled %>%
+  left_join(ga_summary, by = "Gestational age (exact week)") %>%
+  relocate(n, .after = `Gestational age (exact week)`) %>%
+  rename(
+    `Sample size` = n
+  )
+
+tb_sm_cent_pooled_final <- tb_sm_cent_pooled_final %>%
+  dplyr::mutate(`Sample size` = as.integer(`Sample size`)) %>%
+  dplyr::arrange(readr::parse_number(`Gestational age (exact week)`))
+
+# Build the journal-ready table (keeps your tb_theme3)
+tbcentp <- tb_sm_cent_pooled_final %>%
+  gt() %>%
+  # Clear, bold column labels
+  cols_label(
+    `Gestational age (exact week)` = md("**Gestational age (exact week)**"),
+    `Sample size`                  = md("**Sample size**"),
+    `5th centile`                  = md("**5th**"),
+    `50th centile`                 = md("**50th**"),
+    `95th centile`                 = md("**95th**")
+  ) %>%
+  # Spanner headers
+  tab_spanner(
+    label   = md("**Sample size**")
+  ) %>%
+  tab_spanner(
+    label   = md("**Centiles (g/dL)**"),
+    columns = c(`5th centile`, `50th centile`, `95th centile`)
+  ) %>%
+  # Title and footnote (unchanged text)
+  # tab_header(
+  #   title = "Table 3: Gestational-age-specific hemoglobin centile (5, 50, 95th centiles), by gestational age (in weeks), based on a fractional polynomial regression model among the healthy cohort"
+  # ) %>%
+  # tab_options(heading.align = "left") %>%
+  tab_style(
+    style = list(
+      cell_fill(color = "gray80"),
+      cell_text(weight = "bold")
+    ),
+    locations = cells_column_spanners(spanners = everything())
+  ) %>%
+  
+  tab_options(column_labels.background.color = "#f5f5f5",
+            column_labels.font.weight = "bold")  %>%
+  tab_options(heading.background.color = "#f0f0f0") %>%
+
+  tab_footnote(
+    footnote = "Sample size = number of hemoglobin data points pooled across the specific gestational week period (i.e., data from each exact week plus the following 6 days).",
+    locations = cells_column_labels(columns = `Sample size`)
+  ) %>%
+  # Alignment & number formatting (no content changes)
+  cols_align(align = "left",   columns = `Gestational age (exact week)`) %>%
+  cols_align(align = "center", columns = c(`Sample size`, `5th centile`, `50th centile`, `95th centile`)) %>%
+  fmt_number(columns = `Sample size`, decimals = 0) %>%
+  fmt_number(columns = c(`5th centile`, `50th centile`, `95th centile`), decimals = 1) %>%
+  # Optional: consistent column widths for a tight print layout
+  cols_width(
+    `Gestational age (exact week)` ~ px(220),
+    `Sample size` ~ px(90),
+    everything() ~ px(110)
+  )
+
+# Export
+gtsave(tbcentp, filename = "tbcentp.png", expand = 10)
+
+```
+
+## Table 3. Gestational-Age--Specific Hemoglobin Centiles (5th, 50th, 95th) from Fractional-Polynomial Regression in a Healthy Cohort
+
+```{r centable, out.width='90%', fig.height=8, fig.align='center'}
+knitr::include_graphics("tbcentp.png")
+
+```
+
+# Aim 2 Results
+
+Isotonic and Spline Regression for Hemoglobin Decision Thresholds
+
+To establish clinically relevant hemoglobin (Hb) thresholds associated
+with adverse maternal and infant outcomes, we applied two complementary
+statistical modeling approaches:
+
+-   **Restricted cubic spline regression**, and
+-   **Isotonic regression**.
+
+These methods are ideal for understanding both gradual trends and sharp
+changes in risk across the continuous range of hemoglobin values.
+
+**📊 Outcomes Modeled**
+
+We examined associations between antenatal Hb and the following
+outcomes:
+
+-   **Perinatal**: Preterm birth (\<37 and \<34 weeks), low birthweight
+    (\<2500g and \<1500g), small for gestational age (\<10th and \<3rd
+    percentiles), stillbirths (\<20 and \<28 weeks), PSBI, ASPH, and
+    neonatal hyperbilirubinemia.
+-   **Maternal**: Maternal composite outcome, Preeclampsia, postpartum
+    hemorrhage (PPH), premature rupture of membranes (PPROM), and
+    postnatal anemia at 6 weeks (PNC6) and 26 weeks (PNC26).
+-   **Mental health & well-being**: EPDS (depression) and fatigue scores
+    during pregnancy and postpartum.
+-   **Composite**: Meeting any of the following: low birthweight
+    (\<2500g), preterm birth (\<37 weeks), or SGA \<10th percentile.
+
+Each outcome was modeled **separately** to assess risk variation across
+the hemoglobin distribution.
+
+\newpage
+
+```{r panel isotonic,echo=FALSE, include=FALSE}
+
+#load packages 
+library(rms)
+library(tidyverse)
+library(ggrepel)
+library(wesanderson)
+library(ggbreak)
+library(VennDiagram)
+
+
+# List all .rds files in the iso_results directory
+rds_files <- list.files(aim2_result, pattern = "^(spline|iso).*\\.(rds)$", full.names = TRUE)
+
+for (f in rds_files) {
+  name <- tools::file_path_sans_ext(basename(f))
+  assign(name, readRDS(f), envir = .GlobalEnv)
+}
+
+rda_files <- list.files(
+  aim2_dfs,
+  pattern = "^(df_mat|df_inf).*\\.(rda)$",
+  full.names = TRUE,
+  ignore.case = TRUE
+)
+
+for (f in rda_files) {
+  e <- new.env(parent = emptyenv())
+  load(f, envir = e)
+
+  for (nm in ls(e, all.names = FALSE)) {
+    obj <- e[[nm]]
+
+    # Only touch data.frame-like objects that have an 'hb' column
+    if (is.data.frame(obj) && "hb" %in% names(obj)) {
+      if (is.numeric(obj$hb)) {
+        obj$hb <- pmin(pmax(obj$hb, 5), 18)
+      } else {
+        # If hb isn't numeric, try to coerce safely; skip if it becomes all NA
+        hb_num <- suppressWarnings(as.numeric(obj$hb))
+        if (any(!is.na(hb_num))) {
+          obj$hb <- pmin(pmax(hb_num, 5), 18)
+        }
+      }
+    }
+
+    assign(nm, obj, envir = .GlobalEnv)
+  }
+}
+
+
+## base plotting function 
+iso_plot_panel <- function(x, y, rcs_result, iso_model, 
+                           panel_title = "", 
+                           show_legend = FALSE,
+                           show_x = FALSE,
+                           show_y = FALSE) {
+
+  
+  # x = df_mat_preclamp$hb
+  # y = df_mat_preclamp$preclamp
+  # rcs_result = spline_preclamp
+  # iso_model = iso_preclamp_50
+  # panel_title = "C. Preeclampsia" 
+  # show_legend = TRUE 
+  # show_x = TRUE
+  
+  o <- order(x, decreasing = FALSE)
+  boot_ci <- rcs_result$boot_ci
+  spline_model <- rcs_result$model
+  
+  xu <- boot_ci$x
+  lower <- plogis(boot_ci$lower)
+  upper <- plogis(boot_ci$upper)
+  
+  # Get predicted spline values on probability scale
+  pred_main <- plogis(predict(spline_model, newdata = data.frame(hb = xu)))
+
+
+  if (show_x == TRUE) {
+    
+  xlab = "Hemoglobin (g/dL) "
+  
+  } else { xlab = "" }
+  
+   if (show_y == TRUE) {
+     
+    ylab = "Absolute Risk"
+   
+    } else { ylab = "" }
+  
+   plot(NA, xlim = range(xu, na.rm = TRUE), ylim = c(0, 1),
+       xlab = "Hemoglobin (g/dL)", ylab = "")
+  
+  # Bootstrap CI ribbon
+  polygon(c(xu, rev(xu)),
+          c(lower, rev(upper)),
+          col = adjustcolor("#016795", alpha.f = 0.2), border = NA)
+  
+  # Spline fit line
+  lines(xu, pred_main, col = "#016795", lwd = 2)
+  
+  # Isotonic line
+  lines(x[o], iso_model$estimates[o], col = "#9f2305", lwd = 2)
+  
+  # Panel title (left-aligned, bold)
+  if (!is.null(panel_title)) {
+    title(panel_title, adj = 0, font.main = 2, line = 0.6)
+  }
+
+  if (show_legend == TRUE) {
+          legend("topright",
+         legend = c("Spline fit", "Bootstrap 95% CI", "Isotonic fit"),
+         col = c("#016795", adjustcolor("#016795", alpha.f = 0.2), "#9f2305"),
+         lty = c(1, NA, 1),
+         lwd = c(2, NA, 2),
+         pch = c(NA, 15, NA),
+         pt.cex = c(NA, 2, NA),
+         cex = 0.8,  # <-- smaller text
+         bty = "n")
+  }
+  box(bty = "l", lwd = 1.1) 
+}
+
+
+```
+
+## Figure 4. Association between hemoglobin in pregnancy and risk of adverse maternal outcomes based on two methods: isotonic regression (red lines) and restricted cubic spline (blue lines)
+
+```{r, out.width='100%', fig.width= 9, fig.height=6, fig.align='center'}
+# 1) One layout only (no mfrow)
+op <- par(no.readonly = TRUE)
+on.exit(par(op), add = TRUE)
+
+# manuscript-style defaults
+par(
+  mfrow = c(2, 3),              # <-- 6 panels (change to c(1,2) for your 2-panel case)
+  mar   = c(3, 3.5, 2.2, 0.8),  # inner margins per panel
+  oma   = c(1.2, 3.8, 2.2, 1),  # OUTER margins for shared labels and outer box
+  mgp   = c(2.1, 0.6, 0),
+  tcl   = -0.3,
+  las   = 1,
+  cex.axis = 0.9, cex.lab = 1.0, cex.main = 1.0
+)
+
+
+## ---- A (top-left): Maternal Composite Outcome
+iso_plot_panel(df_mat_compo$hb, df_mat_compo$mat_out_compo,
+               spline_mat_compo, iso_mat_compo_50,
+               panel_title = "A. Maternal Composite",
+               show_y = TRUE)
+box(bty = "l", lwd = 1.1)
+
+## ---- B (top-middle): PPH
+iso_plot_panel(df_mat_pph$hb, df_mat_pph$HEM_PPH,
+               spline_pph, iso_pph_50,
+               panel_title = "B. Postpartum Hemorrhage")
+box(bty = "l", lwd = 1.1)
+
+## ---- C (middle-left): Preeclampsia
+iso_plot_panel(df_mat_preclamp$hb, df_mat_preclamp$preclamp,
+               spline_preclamp, iso_preclamp_50,
+               panel_title = "C. Preeclampsia", 
+               show_legend = TRUE, 
+               show_x = TRUE)
+box(bty = "l", lwd = 1.1)
+
+## ---- D (middle-right): PPA 6weeks
+iso_plot_panel(df_mat_ppa_pnc6$hb, df_mat_ppa_pnc6$ppa_pnc6,
+               spline_ppa_pnc6, iso_ppa_pnc6_50,
+               panel_title = "D. Postpartum Anemia 6weeks", 
+               show_x = TRUE, show_y = TRUE)
+box(bty = "l", lwd = 1.1)
+
+## ---- E (bottom-center): PPA 26weeks 
+iso_plot_panel(df_mat_ppa_pnc26$hb, df_mat_ppa_pnc26$ppa_pnc26,
+               spline_ppa_pnc26, iso_ppa_pnc26_50,
+               panel_title = "E. Postpartum Anemia 26weeks", 
+               show_legend = TRUE, show_x = TRUE)
+box(bty = "l", lwd = 1.1)
+
+# Make room for footnotes: bump bottom outer margin a bit before plotting panels:
+# par(oma = c(5.2, 3.8, 2.0, 1.0))  # example used earlier; increase first value if needed
+
+add_panel_footnotes <- function(lines,
+                                side = 1,      # bottom
+                                line = 5,    # distance from edge (increase if clipped)
+                                cex  = 0.8) {
+  txt <- paste(lines, collapse = "\n")
+  mtext(txt, side = side, outer = TRUE, adj = 0, line = line, cex = cex)
+}
+
+# (optional) outer border around the whole figure
+box(which = "outer", lwd = 1.2)
+
+```
+
+*These plots display results for select infant adverse outcomes. On the
+X axis is hemoglobin (g/dL) and on the Y axis is the risk of each
+outcome (ranging 0 to 1). For each outcome there are two risk models
+pictured: the BLUE LINE shows the restricted cubic spline (RCS) with
+bootstrap 95% confidence interval (shaded) and a RED LINE showing the
+step-wise isotonic regression curve with each step indicating
+significant change in the risk of the adverse outcome.*
+
+**Maternal composite outcome** includes maternal death (during pregnancy
+or within 1 year postpartum), any life-threatening condition during
+pregnancy or within 42 days postpartum, severe complications (severe
+hemorrhage, severe preeclampsia, eclampsia, sepsis/systemic infection,
+ruptured uterus), or critical interventions (ICU admission, laparotomy
+including hysterectomy but excluding C-section, or use of blood
+products)
+
+\newpage
+
+## Figure 5. Association between hemoglobin in pregnancy and risk of adverse infant outcomes based on two methods: isotonic regression (red lines) and restricted cubic spline (blue lines)
+
+```{r, out.width='100%', fig.width= 9, fig.height=6, fig.align='center'}
+# 1) One layout only (no mfrow)
+op <- par(no.readonly = TRUE)
+on.exit(par(op), add = TRUE)
+
+# manuscript-style defaults
+par(
+  mfrow = c(2, 3),              # <-- 6 panels (change to c(1,2) for your 2-panel case)
+  mar   = c(3, 3.5, 2.2, 0.8),  # inner margins per panel
+  oma   = c(1.2, 3.8, 2.2, 1),  # OUTER margins for shared labels and outer box
+  mgp   = c(2.1, 0.6, 0),
+  tcl   = -0.3,
+  las   = 1,
+  cex.axis = 0.9, cex.lab = 1.0, cex.main = 1.0
+)
+
+
+## ---- A (top-left): SVN Composite
+iso_plot_panel(df_inf_compo$hb, df_inf_compo$compo_pre_lbw_sga,
+               spline_compo, iso_compo_50,
+               panel_title = "A. SVN Composite",
+               show_y = TRUE)
+box(bty = "l", lwd = 1.1)
+
+## ---- B (top-middle): LBW < 2500g
+iso_plot_panel(df_inf_lbw2500$hb, df_inf_lbw2500$lbw2500,
+               spline_lbw2500, iso_lbw2500_50,
+               panel_title = "B. LBW < 2500g")
+box(bty = "l", lwd = 1.1)
+
+## ---- C (middle-left): SGA < 10th
+iso_plot_panel(df_inf_sga10$hb, df_inf_sga10$sga10,
+               spline_sga10, iso_sga10_50,
+               panel_title = "C. SGA < 10th", 
+               show_legend = TRUE, show_x = TRUE)
+box(bty = "l", lwd = 1.1)
+
+## ---- D (middle-right): Preterm < 37 wks
+iso_plot_panel(df_inf_preterm37$hb, df_inf_preterm37$preterm37,
+               spline_preterm37, iso_preterm37_50,
+               panel_title = "D. Preterm < 37 wks", 
+               show_x = TRUE, show_y = TRUE)
+box(bty = "l", lwd = 1.1)
+
+## ---- E (bottom-center): Stillbirth > 28 wks  (centered at bottom)
+iso_plot_panel(df_inf_stillbirth28$hb, df_inf_stillbirth28$inf_stillbirth28,
+               spline_stillbirth28, iso_stillbirth28_50,
+               panel_title = "E. Stillbirth > 28 wks", 
+               show_legend = TRUE, show_x = TRUE)
+box(bty = "l", lwd = 1.1)
+
+# Make room for footnotes: bump bottom outer margin a bit before plotting panels:
+# par(oma = c(5.2, 3.8, 2.0, 1.0))  # example used earlier; increase first value if needed
+
+add_panel_footnotes <- function(lines,
+                                side = 1,      # bottom
+                                line = 5,    # distance from edge (increase if clipped)
+                                cex  = 0.8) {
+  txt <- paste(lines, collapse = "\n")
+  mtext(txt, side = side, outer = TRUE, adj = 0, line = line, cex = cex)
+}
+
+# (optional) outer border around the whole figure
+box(which = "outer", lwd = 1.2)
+
+```
+
+*Panels: A. SVN Composite: Composite of preterm birth, low birthweight,
+or small-for-gestational-age.; B. LBW \< 2500g: Birthweight \< 2500g; C.
+SGA \< 10th: Birthweight \< 10th percentile for gestational age; D.
+Preterm \< 37 wks: Delivery before 37 weeks; E. Stillbirth ≥ 28 wks:
+Stillbirth at or before 28 weeks' gestation.*
+
+These plots display results for select infant adverse outcomes. On the X
+axis is hemoglobin (g/dL) and on the Y axis is the risk of each outcome
+(ranging 0 to 1). For each outcome there are two risk models pictured:
+the BLUE LINE shows the restricted cubic spline (RCS) with bootstrap 95%
+confidence interval (shaded) and a RED LINE showing the step-wise
+isotonic regression curve with each step indicating significant change
+in the risk of the adverse outcome.
+
+\newpage
+
+## Figure 6. Visual comparison of three hemoglobin cutoffs
+
+Visual comparison of three hemoglobin cutoffs: A) current WHO guidelines
+for anemia, picturing the hemoglobin cutoffs for the third trimester; B)
+ReMAPP study reference limit estimates based on the healthy cohort,
+using methods established by WHO 1989 guidelines; C) ReMAPP study
+decision limit estimates based on hemoglobin thresholds with increased
+risks of adverse outcomes (based on isotonic regression among the full
+ReMAPP cohort).
+
+```{r, out.width='100%', fig.width= 8, fig.height=5, fig.align='center'}
+knitr::include_graphics(paste0(aim2_result,"/isotonic_line_all.png"))
+```
+
+*The figure is color coded in multiple ways. The lines are colored to
+indicate the anemia definition and/or risk severity associated with
+those hemoglobin values (see table below for details). Additionally, the
+cell shading illustrates the cutoffs for severe, moderate, and mild
+anemia (red, orange, and yellow, respectively) and high hemoglobin
+(brown), using just the healthy cohort reference limit cutoffs.*
+
+```{r, out.width='100%', fig.width= 6, fig.height=4, fig.align='center'}
+knitr::include_graphics(paste0("D:/Users/williams_pj/Documents/REMAPP-Public/ReMAPP-Aim2/Line Graph Format.png"))
+```
+\newpage
+
+```{r, fig.width=9, fig.height=11, fig.align='center', out.width= '100%', echo=FALSE, warning=FALSE, message=FALSE}
+library(png)
+library(grid)
+library(gridExtra)
+
+# build file paths
+files <- file.path(
+  aim2_result,
+  c("isotonic_line_1.png",
+    "isotonic_line_2.png",
+    "isotonic_line_3.png")
+)
+
+# read PNGs and convert to grobs
+img_grobs <- lapply(files, function(f) {
+  raster <- png::readPNG(f)
+  grid::rasterGrob(raster, interpolate = TRUE)
+})
+
+# arrange them in a 1 x 3 panel (vertical) for A4 portrait
+gridExtra::grid.arrange(
+  grobs = img_grobs,
+  ncol = 1
+)
+
+
+```
