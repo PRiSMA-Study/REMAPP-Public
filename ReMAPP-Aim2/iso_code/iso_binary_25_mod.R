@@ -49,10 +49,10 @@ t2p_glmer <- function(v, n1, n2, tail, covar1=NULL, covar2=NULL, random_effect=N
       if(n_distinct(data$covar1)<2){
         return(1)
       }
-      if(sum(data$outcome==0)<10 || sum(data$outcome==1)<10){
+      if(sum(data$outcome==0)<5 || sum(data$outcome==1)<5){
         return(1)
       }
-      if(sum(data$group=="Group1")<10 || sum(data$group=="Group2")<10){
+      if(sum(data$group=="Group1")<5 || sum(data$group=="Group2")<5){
         return(1)
       }
       model <- glm(outcome ~ group+covar1, family=binomial(link="logit"),data=data)
@@ -73,10 +73,10 @@ t2p_glmer <- function(v, n1, n2, tail, covar1=NULL, covar2=NULL, random_effect=N
       if(n_distinct(data$covar2)<2){
         return(1)
       }
-      if(sum(data$outcome==0)<10 || sum(data$outcome==1)<10){
+      if(sum(data$outcome==0)<5 || sum(data$outcome==1)<5){
         return(1)
       }
-      if(sum(data$group=="Group1")<10 || sum(data$group=="Group2")<10){
+      if(sum(data$group=="Group1")<5 || sum(data$group=="Group2")<5){
         return(1)
       }
       model <- glm(outcome ~ group+covar1+covar2, family=binomial(link="logit"),data=data)
@@ -106,10 +106,10 @@ t2p_glmer <- function(v, n1, n2, tail, covar1=NULL, covar2=NULL, random_effect=N
       if(n_distinct(data$random_effect)<2){
         return(1)
       }
-      if(sum(data$outcome==0)<10 || sum(data$outcome==1)<10){
+      if(sum(data$outcome==0)<5 || sum(data$outcome==1)<5){
         return(1)
       }
-      if(sum(data$group=="Group1")<10 || sum(data$group=="Group2")<10){
+      if(sum(data$group=="Group1")<5 || sum(data$group=="Group2")<5){
         return(1)
       }
       model <- glmmTMB(outcome ~ group+covar1+ (1|random_effect), family=binomial, data=data)
@@ -141,10 +141,10 @@ t2p_glmer <- function(v, n1, n2, tail, covar1=NULL, covar2=NULL, random_effect=N
       if(n_distinct(data$random_effect)<2){
         return(1)
       }
-      if(sum(data$outcome==0)<10 || sum(data$outcome==1)<10){
+      if(sum(data$outcome==0)<5 || sum(data$outcome==1)<5){
         return(1)
       }
-      if(sum(data$group=="Group1")<10 || sum(data$group=="Group2")<10){
+      if(sum(data$group=="Group1")<5 || sum(data$group=="Group2")<5){
         return(1)
       }
       model <- glmmTMB(outcome ~ group+covar1+covar2 + (1|random_effect), family=binomial, data=data)
@@ -191,7 +191,6 @@ t2p_glmer <- function(v, n1, n2, tail, covar1=NULL, covar2=NULL, random_effect=N
     return(pvalue)
   }
 }
-
 flexstepreg_glmer_25 <- function(y, x, covar1=NULL, covar2=NULL, random_effect=NULL, alpha.adjacency = 1, tail.two = "upper") {
   
   # y = df_inf_sga3$sga3

@@ -34,7 +34,7 @@ library(webshot2)
 # ───────────────────────────────────────
 # Setup Paths & Load Data ----
 # ───────────────────────────────────────
-UploadDate <- "2025-10-31"
+UploadDate <- "2026-01-30"
 
 base_dir <- file.path("D:/Users/williams_pj/Documents/Analysis/ReMAPP/Aim2", UploadDate)
 setwd(base_dir)
@@ -71,11 +71,11 @@ saveRDS(spline_asph, "iso_results/spline_asph.rds")
 # ───────────────────────────────────────
 
 iso_asph_25 <- flexstepreg_glmer_25(df_inf_asph$inf_asph, df_inf_asph$hb, df_inf_asph$SITE, 
-                                     covar2 = NULL, random_effect = NULL, alpha = 0.01)
+                                     covar2 = NULL, random_effect = NULL, alpha.adjacency = 0.01)
 saveRDS(iso_asph_25, "iso_results/iso_asph_25.rds")
 
 iso_asph_50 <- flexstepreg_glmer(df_inf_asph$inf_asph, df_inf_asph$hb, df_inf_asph$SITE, 
-                                  covar2 = NULL, random_effect = NULL, alpha = 0.01)
+                                  covar2 = NULL, random_effect = NULL, alpha.adjacency = 0.01)
 saveRDS(iso_asph_50, "iso_results/iso_asph_50.rds")
 
 # ───────────────────────────────────────
@@ -142,11 +142,11 @@ saveRDS(spline_asph_trim1, "iso_results/spline_asph_trim1.rds")
 # ───────────────────────────────────────
 
 iso_asph_25_trim1 <- flexstepreg_glmer_25(df_inf_asph_trim1$inf_asph, df_inf_asph_trim1$hb, df_inf_asph_trim1$SITE, 
-                                           covar2 = NULL, random_effect = NULL, alpha = 0.01)
+                                           covar2 = NULL, random_effect = NULL, alpha.adjacency = 0.01)
 saveRDS(iso_asph_25_trim1, "iso_results/iso_asph_25_trim1.rds")
 
 iso_asph_50_trim1 <- flexstepreg_glmer(df_inf_asph_trim1$inf_asph, df_inf_asph_trim1$hb, df_inf_asph_trim1$SITE, 
-                                        covar2 = NULL, random_effect = NULL, alpha = 0.01)
+                                        covar2 = NULL, random_effect = NULL, alpha.adjacency = 0.01)
 saveRDS(iso_asph_50_trim1, "iso_results/iso_asph_50_trim1.rds")
 
 # ───────────────────────────────────────
@@ -212,11 +212,11 @@ saveRDS(spline_asph_trim2, "iso_results/spline_asph_trim2.rds")
 # ───────────────────────────────────────
 
 iso_asph_25_trim2 <- flexstepreg_glmer_25(df_inf_asph_trim2$inf_asph, df_inf_asph_trim2$hb, df_inf_asph_trim2$SITE, 
-                                           covar2 = NULL, random_effect = NULL, alpha = 0.01)
+                                           covar2 = NULL, random_effect = NULL, alpha.adjacency = 0.01)
 saveRDS(iso_asph_25_trim2, "iso_results/iso_asph_25_trim2.rds")
 
 iso_asph_50_trim2 <- flexstepreg_glmer(df_inf_asph_trim2$inf_asph, df_inf_asph_trim2$hb, df_inf_asph_trim2$SITE, 
-                                        covar2 = NULL, random_effect = NULL, alpha = 0.01)
+                                        covar2 = NULL, random_effect = NULL, alpha.adjacency = 0.01)
 saveRDS(iso_asph_50_trim2, "iso_results/iso_asph_50_trim2.rds")
 
 # ───────────────────────────────────────
@@ -281,11 +281,11 @@ saveRDS(spline_asph_trim3, "iso_results/spline_asph_trim3.rds")
 # ───────────────────────────────────────
 
 iso_asph_25_trim3 <- flexstepreg_glmer_25(df_inf_asph_trim3$inf_asph, df_inf_asph_trim3$hb, df_inf_asph_trim3$SITE, 
-                                           covar2 = NULL, random_effect = NULL, alpha = 0.01)
+                                           covar2 = NULL, random_effect = NULL, alpha.adjacency = 0.01)
 saveRDS(iso_asph_25_trim3, "iso_results/iso_asph_25_trim3.rds")
 
 iso_asph_50_trim3 <- flexstepreg_glmer(df_inf_asph_trim3$inf_asph, df_inf_asph_trim3$hb, df_inf_asph_trim3$SITE, 
-                                        covar2 = NULL, random_effect = NULL, alpha = 0.01)
+                                        covar2 = NULL, random_effect = NULL, alpha.adjacency = 0.01)
 saveRDS(iso_asph_50_trim3, "iso_results/iso_asph_50_trim3.rds")
 
 # ───────────────────────────────────────

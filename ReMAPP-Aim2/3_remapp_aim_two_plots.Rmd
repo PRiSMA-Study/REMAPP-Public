@@ -41,7 +41,7 @@ library(rms)
 library(haven)
 library(webshot2)
 
-UploadDate = "2025-10-31"
+UploadDate = "2026-01-30"
 
 maindir <- file.path("D:/Users/williams_pj/Documents/Analysis/ReMAPP/Aim2", UploadDate)
 
@@ -53,8 +53,6 @@ load("derived_data/df_anemia_complet_preg.rda")
 load("derived_data/df_anemia_trim.rda")
 load("derived_data/df_maternal.rda")
 load("derived_data/df_hb_long2.rda")
-load("derived_data/df_heat_inf.rda")
-load("derived_data/df_heat_mat.rda")
 load("derived_data/anc_anemia_long.rda")
 
 # load("derived_data/df_mat_anc_fat.rda")
@@ -3078,7 +3076,7 @@ plot_vioplot_table_pair(
 
 \newpage 
 
-### EPDS Score
+### Fatigue Score
 
 #### All Trimesters at ANC
 
@@ -4254,7 +4252,7 @@ plot_all_for_grid <- function(grid, suffix = " ") {
 
 ### All Trimesters
 #### Overview of all outcomes 
-```{r all-panel1, fig.width=10, fig.height=10, out.width='80%'}
+```{r all-panel1, fig.width=10, fig.height=8, out.width='80%'}
 
 library(patchwork)
 
@@ -4291,7 +4289,7 @@ sub3[[1]] / sub3[[2]]
 
 ```
 \newpage
-#### Depression and Fatigue Scores
+#### Depression (Standard Cutoff <11) and Fatigue Scores
 ```{r all-panel4, fig.width=8, fig.height=10, out.width='80%'}
 
 library(patchwork)
@@ -4449,13 +4447,14 @@ sub1 <- purrr::compact(plots_p6[c("overview")])
 sub1[[1]]
 
 ```
+\newpage
 #### Depression and Fatigue Scores
 ```{r p6-panel4, fig.width=10, fig.height=8, out.width='80%'}
 
 plots_p6 <- plot_all_for_grid(hb_grid_p6, "Postpartum 6weeks")
 sub4 <- purrr::compact(plots_p6[c("dpr","fat")])
 
-# two on one page (side-by-side). Use "/" instead of "|" for stacked.
-sub4[[1]] | sub4[[2]]
+# two on one page (side-by-side). 
+sub4[[1]] / sub4[[2]]
 
 ```

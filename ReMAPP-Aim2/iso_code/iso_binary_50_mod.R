@@ -16,7 +16,7 @@ library(lmerTest)
 library(tidyverse)
 library(glmmTMB)
 
-t2p_glmer_50 <-  function(v, n1, n2, tail, covar1=NULL, covar2=NULL, random_effect=NULL) {
+t2p_glmer_50 <- function(v, n1, n2, tail, covar1=NULL, covar2=NULL, random_effect=NULL) {
   if (n1 < 2 || n2 < 2) {
     return
     (1) 

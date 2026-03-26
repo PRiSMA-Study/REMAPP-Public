@@ -34,12 +34,12 @@ library(webshot2)
 # ───────────────────────────────────────
 ## Setup Paths & Load Data ----
 # ───────────────────────────────────────
-UploadDate <- "2025-10-31"
+UploadDate <- "2026-01-30"
 
 base_dir <- file.path("D:/Users/williams_pj/Documents/Analysis/ReMAPP/Aim2", UploadDate)
 setwd(base_dir)
 
-load("derived_data/df_inf_compo.rda")
+load("derived_data/df_inf_compo.rda") 
 load("derived_data/df_inf_compo_trim1.rda")
 load("derived_data/df_inf_compo_trim2.rda")
 load("derived_data/df_inf_compo_trim3.rda")
@@ -48,6 +48,13 @@ df_inf_compo$hb        <- round(pmin(pmax(df_inf_compo$hb, 5), 18), 1)
 df_inf_compo_trim1$hb  <- round(pmin(pmax(df_inf_compo_trim1$hb, 5), 18), 1)
 df_inf_compo_trim2$hb  <- round(pmin(pmax(df_inf_compo_trim2$hb, 5), 18), 1)
 df_inf_compo_trim3$hb  <- round(pmin(pmax(df_inf_compo_trim3$hb, 5), 18), 1)
+
+
+
+df_inf_compo <- df_inf_compo %>% select(SITE, MOMID, PREGID, INFANTID, compo_pre_lbw_sga, hb, trimester)
+df_inf_compo_trim1 <- df_inf_compo_trim1 %>% select(SITE, MOMID, PREGID, INFANTID, compo_pre_lbw_sga, hb)
+df_inf_compo_trim2 <- df_inf_compo_trim2 %>% select(SITE, MOMID, PREGID, INFANTID, compo_pre_lbw_sga, hb)
+df_inf_compo_trim3 <- df_inf_compo_trim3 %>% select(SITE, MOMID, PREGID, INFANTID, compo_pre_lbw_sga, hb)
 
 # Establish the source of the functions
 source("~/REMAPP-Public/ReMAPP-Aim2/iso_code/spline_binary_boot.R")

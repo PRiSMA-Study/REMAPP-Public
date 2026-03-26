@@ -34,7 +34,7 @@ library(webshot2)
 # ───────────────────────────────────────
 # Setup Paths & Load Data ----
 # ───────────────────────────────────────
-UploadDate <- "2025-10-31"
+UploadDate <- "2026-01-30"
 
 base_dir <- file.path("D:/Users/williams_pj/Documents/Analysis/ReMAPP/Aim2", UploadDate)
 setwd(base_dir)
@@ -106,6 +106,7 @@ vioplot_anc_fat_50 <- plot_boot_continuous(
   outcome_var = df_mat_anc_fat$fatigue_score,
   title = "FATIGUE ANC with Bootstrap Spline CI (0.50 Isotonic)"
 )
+
 dev.off()
 
 # Save 0.25 plot
@@ -140,78 +141,78 @@ out_anc_fat_25  <- save_iso_output(iso_anc_fat_25,  "FATIGUE ANC (.25)",  "out_a
 out_anc_fat_50  <- save_iso_output(iso_anc_fat_50,  "FATIGUE ANC (.50)",  "out_anc_fat_50.rda")
 
 
-
-# ───────────────────────────────────────
-#TRIMESTER 1 – FATIGUE ANC Models ----
-# ───────────────────────────────────────
-
-# ───────────────────────────────────────
-## Fit Spline Models ----
-# ───────────────────────────────────────
-spline_anc_fat_trim1 <- knot_fun_boot(df_mat_anc_fat_trim1, "hb", "fatigue_score")
-saveRDS(spline_anc_fat_trim1, "iso_results/spline_anc_fat_trim1.rds")
-
-# ───────────────────────────────────────
-## Fit Isotonic Models ----
-# ───────────────────────────────────────
-
-iso_anc_fat_25_trim1 <- flexstepreg_lmer25(df_mat_anc_fat_trim1$fatigue_score, df_mat_anc_fat_trim1$hb, df_mat_anc_fat_trim1$SITE, 
-                                             covar2 = NULL, random_effect = df_mat_anc_fat_trim1$MOMID, alpha = 0.01)
-saveRDS(iso_anc_fat_25_trim1, "iso_results/iso_anc_fat_25_trim1.rds")
-
-iso_anc_fat_50_trim1 <- flexstepreg_lmer(df_mat_anc_fat_trim1$fatigue_score, df_mat_anc_fat_trim1$hb, df_mat_anc_fat_trim1$SITE, 
-                                          covar2 = NULL, random_effect = df_mat_anc_fat_trim1$MOMID, alpha = 0.01)
-saveRDS(iso_anc_fat_50_trim1, "iso_results/iso_anc_fat_50_trim1.rds")
-
-# ───────────────────────────────────────
-## Generate Plots ----
-# ───────────────────────────────────────
-
-# Save 0.50 plot
-png("iso_results/vioplot_anc_fat_50_trim1.png", width = 800, height = 600)
-# 0.50 Isotonic
-vioplot_anc_fat_50_trim1 <- plot_boot_continuous(
-  x = df_mat_anc_fat_trim1$hb,
-  y = df_mat_anc_fat_trim1$fatigue_score,
-  xlab = "Hb",
-  ylab = "FATIGUE ANC",
-  rcs_result = spline_anc_fat_trim1,
-  iso_model = iso_anc_fat_50_trim1,
-  outcome_var = df_mat_anc_fat_trim1$fatigue_score,
-  title = "FATIGUE ANC TRIM1 with Bootstrap Spline CI (0.50 Isotonic)"
-)
-dev.off()
-
-# Save 0.25 plot
-png("iso_results/vioplot_anc_fat_25_trim1.png", width = 800, height = 600)
-# 0.25 Isotonic
-vioplot_anc_fat_25_trim1 <- plot_boot_continuous(
-  x = df_mat_anc_fat_trim1$hb,
-  y = df_mat_anc_fat_trim1$fatigue_score,
-  xlab = "Hb",
-  ylab = "FATIGUE ANC",
-  rcs_result = spline_anc_fat_trim1,
-  iso_model = iso_anc_fat_25_trim1,
-  outcome_var = df_mat_anc_fat_trim1$fatigue_score,
-  title = "FATIGUE ANC TRIM1 with Bootstrap Spline CI (0.25 Isotonic)"
-)
-
-dev.off()
-
-
-# ───────────────────────────────────────
-## Save Processed Isotonic Output Objects ----
-# ───────────────────────────────────────
-save_iso_output <- function(model_obj, label, filename) {
-  out <- outdata(model_obj, label)
-  save(out, file = file.path("iso_results", filename))
-  return(out)
-}
-
-out_anc_fat_25_trim1  <- save_iso_output(iso_anc_fat_25_trim1,  "FATIGUE ANC(.25, Trim1)",  "out_anc_fat_25_trim1.rda")
-out_anc_fat_50_trim1  <- save_iso_output(iso_anc_fat_50_trim1,  "FATIGUE ANC(.50, Trim1)",  "out_anc_fat_50_trim1.rda")
-
-
+#PJW Comment - There is only one 1st trimester Fatigue measurement
+# # ───────────────────────────────────────
+# #TRIMESTER 1 – FATIGUE ANC Models ----
+# # ───────────────────────────────────────
+# 
+# # ───────────────────────────────────────
+# ## Fit Spline Models ----
+# # ───────────────────────────────────────
+# spline_anc_fat_trim1 <- knot_fun_boot(df_mat_anc_fat_trim1, "hb", "fatigue_score")
+# saveRDS(spline_anc_fat_trim1, "iso_results/spline_anc_fat_trim1.rds")
+# 
+# # ───────────────────────────────────────
+# ## Fit Isotonic Models ----
+# # ───────────────────────────────────────
+# 
+# iso_anc_fat_25_trim1 <- flexstepreg_lmer25(df_mat_anc_fat_trim1$fatigue_score, df_mat_anc_fat_trim1$hb, df_mat_anc_fat_trim1$SITE, 
+#                                              covar2 = NULL, random_effect = df_mat_anc_fat_trim1$MOMID, alpha = 0.01)
+# saveRDS(iso_anc_fat_25_trim1, "iso_results/iso_anc_fat_25_trim1.rds")
+# 
+# iso_anc_fat_50_trim1 <- flexstepreg_lmer(df_mat_anc_fat_trim1$fatigue_score, df_mat_anc_fat_trim1$hb, df_mat_anc_fat_trim1$SITE, 
+#                                           covar2 = NULL, random_effect = df_mat_anc_fat_trim1$MOMID, alpha = 0.01)
+# saveRDS(iso_anc_fat_50_trim1, "iso_results/iso_anc_fat_50_trim1.rds")
+# 
+# # ───────────────────────────────────────
+# ## Generate Plots ----
+# # ───────────────────────────────────────
+# 
+# # Save 0.50 plot
+# png("iso_results/vioplot_anc_fat_50_trim1.png", width = 800, height = 600)
+# # 0.50 Isotonic
+# vioplot_anc_fat_50_trim1 <- plot_boot_continuous(
+#   x = df_mat_anc_fat_trim1$hb,
+#   y = df_mat_anc_fat_trim1$fatigue_score,
+#   xlab = "Hb",
+#   ylab = "FATIGUE ANC",
+#   rcs_result = spline_anc_fat_trim1,
+#   iso_model = iso_anc_fat_50_trim1,
+#   outcome_var = df_mat_anc_fat_trim1$fatigue_score,
+#   title = "FATIGUE ANC TRIM1 with Bootstrap Spline CI (0.50 Isotonic)"
+# )
+# dev.off()
+# 
+# # Save 0.25 plot
+# png("iso_results/vioplot_anc_fat_25_trim1.png", width = 800, height = 600)
+# # 0.25 Isotonic
+# vioplot_anc_fat_25_trim1 <- plot_boot_continuous(
+#   x = df_mat_anc_fat_trim1$hb,
+#   y = df_mat_anc_fat_trim1$fatigue_score,
+#   xlab = "Hb",
+#   ylab = "FATIGUE ANC",
+#   rcs_result = spline_anc_fat_trim1,
+#   iso_model = iso_anc_fat_25_trim1,
+#   outcome_var = df_mat_anc_fat_trim1$fatigue_score,
+#   title = "FATIGUE ANC TRIM1 with Bootstrap Spline CI (0.25 Isotonic)"
+# )
+# 
+# dev.off()
+# 
+# 
+# # ───────────────────────────────────────
+# ## Save Processed Isotonic Output Objects ----
+# # ───────────────────────────────────────
+# save_iso_output <- function(model_obj, label, filename) {
+#   out <- outdata(model_obj, label)
+#   save(out, file = file.path("iso_results", filename))
+#   return(out)
+# }
+# 
+# out_anc_fat_25_trim1  <- save_iso_output(iso_anc_fat_25_trim1,  "FATIGUE ANC(.25, Trim1)",  "out_anc_fat_25_trim1.rda")
+# out_anc_fat_50_trim1  <- save_iso_output(iso_anc_fat_50_trim1,  "FATIGUE ANC(.50, Trim1)",  "out_anc_fat_50_trim1.rda")
+# 
+# 
 
 
 # ───────────────────────────────────────

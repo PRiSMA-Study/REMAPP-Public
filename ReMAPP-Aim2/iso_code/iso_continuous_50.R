@@ -6,7 +6,7 @@
 # The modified code is for continuous variable with/out fixed effect and/or random_effect
 
 #*******************************************************************************
-#library(lme4)
+library(lme4)
 library(lmerTest)
 library(dplyr)
 
@@ -19,7 +19,7 @@ get.numbers_lmer <- function(x) {
   return(l)
 }
 
-t2p_lmer<- function(v, n1, n2, tail, covar1=NULL, covar2=NULL, random_effect=NULL) {
+t2p_lmer <- function(v, n1, n2, tail, covar1=NULL, covar2=NULL, random_effect=NULL) {
   
   if (n1 < 50 || n2 < 50) {
     return(1)  
@@ -34,92 +34,71 @@ t2p_lmer<- function(v, n1, n2, tail, covar1=NULL, covar2=NULL, random_effect=NUL
   }
   
   tryCatch({
-    # Fit mixed-effects model
-    if(is.null(random_effect))
-    {
-      if(is.null(covar2)){
-        data <- data.frame(
-          outcome = c(x, y),
-          group = factor(rep(c("Group1", "Group2"), c(n1, n2))),
-          covar1 = factor(covar1)
-        )
-        if(n_distinct(data$outcome)<2 || n_distinct(data$covar1)<2){
-          return(1)
-        }
-        model <- lmer(outcome ~ group + covar1, data = data, REML = FALSE)
-      }
-      else{
-        data <- data.frame(
-          outcome = c(x, y),
-          group = factor(rep(c("Group1", "Group2"), c(n1, n2))),
-          covar1 = factor(covar1),
-          covar2 = factor(covar2)
-        )
-        if(n_distinct(data$outcome)<2 || n_distinct(data$covar1)<2 || n_distinct(data$covar2)<2){
-          return(1)
-        }
-        model <- lmer(outcome ~ group + covar1 + covar2, data = data, REML = FALSE)
-      }
+    # Create the base data frame
+    data <- data.frame(
+      outcome = c(x, y),
+      group = factor(rep(c("Group1", "Group2"), c(n1, n2)))
+    )
+    
+    # Add covariates and random effect if provided
+    if(!is.null(covar1)) {
+      data$covar1 <- factor(covar1)
     }
-    else{
-      if(is.null(covar2)){
-        data <- data.frame(
-          outcome = c(x, y),
-          group = factor(rep(c("Group1", "Group2"), c(n1, n2))),
-          covar1 = factor(covar1),
-          random_effect = factor(random_effect)
-        ) %>% 
-          group_by(random_effect) %>% 
-          mutate(n = n()) %>%
-          filter(n>1) %>%
-          ungroup()
-        if(n_distinct(data$outcome)<2 || n_distinct(data$group)<2 || 
-           n_distinct(data$covar1)<2 || n_distinct(data$random_effect)<2){
-          return(1)
-        }
-        model <- lmer(outcome ~ group + covar1 + (1 | random_effect), data = data, REML = FALSE)
-      }
-      else{
-        data <- data.frame(
-          outcome = c(x, y),
-          group = factor(rep(c("Group1", "Group2"), c(n1, n2))),
-          covar1 = factor(covar1),
-          covar2 = factor(covar2),
-          random_effect = factor(random_effect)
-        ) %>% 
-          group_by(random_effect) %>% 
-          mutate(n = n()) %>%
-          filter(n>1) %>%
-          ungroup()
-        if(n_distinct(data$outcome)<2 || n_distinct(data$group)<2 || 
-           n_distinct(data$covar1)<2 || n_distinct(data$covar2)<2 || 
-           n_distinct(data$random_effect)<2){
-          return(1)
-        }
-        model <- lmer(outcome ~ group + covar1 + covar2 + (1 | random_effect), data = data, REML = FALSE)
-      }
+    if(!is.null(covar2)) {
+      data$covar2 <- factor(covar2)
+    }
+    if(!is.null(random_effect)) {
+      data$random_effect <- factor(random_effect)
     }
     
-    # Check for convergence issues
-    if (is.null(random_effect)) {
-      if (n_distinct(data$outcome) < 2) {
-        return(1)
-      } else {
-        summary_coef <- summary(model)$coefficients
-        row_index <- grep("^groupGroup2", rownames(summary_coef))
-        if (length(row_index) > 0) {
-          pvalue <- summary_coef[row_index, "Pr(>|t|)"]
-        } else {
-          pvalue <- 1
-        }
-      }
-    } else if (isSingular(model)) {
-      pvalue <- 1
+    # Check for enough distinct values
+    if(n_distinct(data$outcome) < 2) {
+      return(1)
+    }
+    
+    # Build formula based on provided variables
+    formula_str <- "outcome ~ group"
+    
+    if(!is.null(covar1)) {
+      if(n_distinct(data$covar1) < 2) return(1)
+      formula_str <- paste(formula_str, "+ covar1")
+    }
+    if(!is.null(covar2)) {
+      if(n_distinct(data$covar2) < 2) return(1)
+      formula_str <- paste(formula_str, "+ covar2")
+    }
+    
+    if(!is.null(random_effect)) {
+      # Ensure we have enough observations per random effect level
+      if(n_distinct(data$random_effect) < 2) return(1)
+      
+      # Filter to keep only random effect levels with >1 observation
+      data <- data %>%
+        group_by(random_effect) %>%
+        filter(n() > 1) %>%
+        ungroup()
+      
+      if(nrow(data) == 0) return(1)
+      if(n_distinct(data$group) < 2) return(1)
+      
+      formula_str <- paste(formula_str, "+ (1 | random_effect)")
+    }
+    
+    # Fit the model
+    model <- lmer(as.formula(formula_str), data = data, REML = FALSE)
+    
+    # Extract p-value for group effect
+    summary_coef <- summary(model)$coefficients
+    
+    # Find the row for groupGroup2
+    row_index <- grep("^groupGroup2", rownames(summary_coef))
+    if (length(row_index) > 0) {
+      pvalue <- summary_coef[row_index, "Pr(>|t|)"]
     } else {
-      summary_coef <- summary(model)$coefficients
-      row_index <- grep("^groupGroup2", rownames(summary_coef))
+      # Try alternative naming
+      row_index <- grep("group", rownames(summary_coef), ignore.case = TRUE)
       if (length(row_index) > 0) {
-        pvalue <- summary_coef[row_index, "Pr(>|t|)"]
+        pvalue <- summary_coef[row_index[1], "Pr(>|t|)"]
       } else {
         pvalue <- 1
       }
@@ -128,9 +107,9 @@ t2p_lmer<- function(v, n1, n2, tail, covar1=NULL, covar2=NULL, random_effect=NUL
     # Check for NaN or NA
     if (is.na(pvalue) || is.nan(pvalue)) {
       return(1)
-    } else {
-      return(pvalue)
     }
+    
+    return(pvalue)
     
   }, error = function(e) {
     # Return p-value of 1 if any error occurs during model fitting
@@ -141,20 +120,16 @@ t2p_lmer<- function(v, n1, n2, tail, covar1=NULL, covar2=NULL, random_effect=NUL
   })
 }
 
-flexstepreg_lmer <- function(y, x, covar1=NULL, covar2=NULL, random_effect=NULL, alpha.adjacency = 1, tail.two = "upper") {
-  kk<-0
+flexstepreg_lmer <- function(y, x, covar1=NULL, covar2=NULL, random_effect=NULL, alpha.adjacency = 0.05, tail.two = "upper") {
+  kk <- 0
   tail.two <- match.arg(tail.two, c("upper", "lower", "two"))
   o <- order(x, decreasing = FALSE)
   
   x <- x[o]
   y <- y[o]
-  covar1 <- covar1[o]
-  if(!is.null(covar2)){
-    covar2 <- covar2[o]
-  }
-  if(!is.null(random_effect)){
-    random_effect <- random_effect[o]
-  }
+  if(!is.null(covar1)) covar1 <- covar1[o]
+  if(!is.null(covar2)) covar2 <- covar2[o]
+  if(!is.null(random_effect)) random_effect <- random_effect[o]
   
   mu <- mean(y)
   ss0 <- sum((y - mu)^2)
@@ -171,16 +146,12 @@ flexstepreg_lmer <- function(y, x, covar1=NULL, covar2=NULL, random_effect=NULL,
     bin_counts <- rle(sort(x_binned))$lengths
     g <- c(0, cumsum(bin_counts))
     
-    # Assign to global environment
-    list2env(list(g = g, x_binned = x_binned), envir = .GlobalEnv)
+    return(list(g = g, x_binned = x_binned))
   }
   
-  
-  # Call the function once and store results
+  # Call the function and get results
   out <- get_numbers_binned(x)
-  
   g <- out$g
-  
   x_binned <- out$x_binned
   
   # Calculate total number of potential models for progress tracking
@@ -215,18 +186,20 @@ flexstepreg_lmer <- function(y, x, covar1=NULL, covar2=NULL, random_effect=NULL,
         tempPV <- y[(g[link + 1] + 1):g[i + 1]]
         tempN1 <- g[j + 1] - g[link + 1]
         tempN2 <- g[i + 1] - g[j + 1]
-        tempCovar1 <- covar1[(g[link + 1] + 1):g[i + 1]]
         
-        if(!is.null(covar2)){
-          tempCovar2 <- covar2[(g[link + 1] + 1):g[i + 1]]
-        } else {
-          tempCovar2 <- NULL
+        # Extract covariates for this segment
+        tempCovar1 <- NULL
+        tempCovar2 <- NULL
+        tempRandom_effect <- NULL
+        
+        if(!is.null(covar1)) {
+          tempCovar1 <- covar1[(g[link + 1] + 1):g[i + 1]]
         }
-        
-        if(!is.null(random_effect)){
+        if(!is.null(covar2)) {
+          tempCovar2 <- covar2[(g[link + 1] + 1):g[i + 1]]
+        }
+        if(!is.null(random_effect)) {
           tempRandom_effect <- random_effect[(g[link + 1] + 1):g[i + 1]]
-        } else {
-          tempRandom_effect <- NULL
         }
         
         # Increment and display counter
@@ -252,10 +225,12 @@ flexstepreg_lmer <- function(y, x, covar1=NULL, covar2=NULL, random_effect=NULL,
     }
     
     # Sort by score
-    o.score <- order(link.rank.score[[i]]$s, decreasing = FALSE)
-    link.rank.score[[i]]$l <- link.rank.score[[i]]$l[o.score]
-    link.rank.score[[i]]$r <- link.rank.score[[i]]$r[o.score]
-    link.rank.score[[i]]$s <- link.rank.score[[i]]$s[o.score]
+    if(length(link.rank.score[[i]]$s) > 0) {
+      o.score <- order(link.rank.score[[i]]$s, decreasing = FALSE)
+      link.rank.score[[i]]$l <- link.rank.score[[i]]$l[o.score]
+      link.rank.score[[i]]$r <- link.rank.score[[i]]$r[o.score]
+      link.rank.score[[i]]$s <- link.rank.score[[i]]$s[o.score]
+    }
   }
   
   cat(paste("Finished! Total models run:", kk, "\n"))
@@ -283,18 +258,19 @@ flexstepreg_lmer <- function(y, x, covar1=NULL, covar2=NULL, random_effect=NULL,
     groups[o][(partition[i - 1] + 1):partition[i]] <- i - 1
   }
   
-  # Calculate breakpoints only 
-  if (length(partition) > 1) {
-    # Use pre-binned x values (already at .125/.375/.625/.875)
+  # Calculate breakpoints
+  brkPoints <- numeric(0)
+  if (length(partition) > 2) {
     brkPoints <- sapply(2:(length(partition)-1), function(i) {
-      (x_binned[partition[i]] + x_binned[partition[i]+1]) / 2
+      idx1 <- partition[i]
+      idx2 <- partition[i] + 1
+      if(idx2 <= length(x)) {
+        (x[idx1] + x[idx2]) / 2
+      } else {
+        x[idx1]
+      }
     })
-    
-  } else {
-    brkPoints <- numeric(0)
   }
   
   return(list(groups = groups, estimates = estimates, statistic = statistic, brkPoints = brkPoints))
 }
-
-

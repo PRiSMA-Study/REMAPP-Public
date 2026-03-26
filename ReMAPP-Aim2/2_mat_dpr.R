@@ -34,7 +34,7 @@ library(webshot2)
 # ───────────────────────────────────────
 # Setup Paths & Load Data ----
 # ───────────────────────────────────────
-UploadDate <- "2025-10-31"
+UploadDate <- "2026-01-30"
 
 base_dir <- file.path("D:/Users/williams_pj/Documents/Analysis/ReMAPP/Aim2", UploadDate)
 setwd(base_dir)
@@ -53,6 +53,12 @@ df_mat_anc_dpr_trim1$hb  <- round(pmin(pmax(df_mat_anc_dpr_trim1$hb, 5), 18), 2)
 df_mat_anc_dpr_trim2$hb  <- round(pmin(pmax(df_mat_anc_dpr_trim2$hb, 5), 18), 2)
 df_mat_anc_dpr_trim3$hb  <- round(pmin(pmax(df_mat_anc_dpr_trim3$hb, 5), 18), 2)
 df_mat_pnc_dpr_pnc6$hb  <- round(pmin(pmax(df_mat_pnc_dpr_pnc6$hb, 5), 18), 2)
+
+
+df_mat_anc_dpr <- df_mat_anc_dpr %>% select(SITE, MOMID, PREGID, depress, hb)
+df_mat_anc_dpr_trim1 <- df_mat_anc_dpr_trim1 %>% select(SITE, MOMID, PREGID, depress, hb)
+df_mat_anc_dpr_trim2 <- df_mat_anc_dpr_trim2 %>% select(SITE, MOMID, PREGID, depress, hb)
+df_mat_anc_dpr_trim3 <- df_mat_anc_dpr_trim3 %>% select(SITE, MOMID, PREGID, depress, hb)
 
 # Establish the source of the functions
 # Establish the source of the functions
