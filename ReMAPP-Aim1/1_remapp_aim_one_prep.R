@@ -1,8 +1,9 @@
 
 #****************************************************************************
 #*Aim 1: Healthy cohort criteria data preparation
-#*Author: Xiaoyan Hu
-#*Email: xyh@gwu.edu
+#*Original Author: Xiaoyan Hu
+#*Editor: Precious Williams 
+#*Email: williams_pj@gwu.edu
 #****************************************************************************
 rm(list = ls())
 
@@ -129,7 +130,7 @@ if (file.exists("derived_data/MAT_GWG.rda")) {
   
 } else {
   
-  MAT_GWG <- read.csv(paste0("Z:/Outcome Data/", UploadDate, "/GWG_OUTCOME_LONG_", UploadDate, ".csv"))
+  MAT_GWG <- read.csv(paste0("Z:/Outcome Data/", UploadDate, "/GWG_OUTCOME_LONG_ALL_", UploadDate, ".csv"))
   save(MAT_GWG, file = "derived_data/MAT_GWG.rda")
   
 }
@@ -300,17 +301,6 @@ m08_g6pd_ke <- read.csv(paste0("Z:/PRISMA_Data_Uploads/", UploadDate,"/",UploadD
 
 # For MNH08 quanys variables - phasing out the use of TYPE_VISIT, therefore, 
 ## we are taking the first non missing lab value measured between 0 and 139 days
-mnh08 <- mnh08_raw %>%
-  left_join(MAT_ENROLL %>% select(SITE, MOMID, PREGID, PREG_START_DATE),
-            by = c("SITE", "MOMID", "PREGID")) %>%
-  select(SITE, MOMID, PREGID, M08_LBSTDAT, M08_FERRITIN_LBORRES, 
-          M08_CRP_LBORRES, M08_AGP_LBORRES, PREG_START_DATE) %>%
-  mutate(M08_LBSTDAT = clean_date(M08_LBSTDAT),
-         PREG_START_DATE = ymd(PREG_START_DATE))  %>%
-  mutate(gest_age = as.numeric(M08_LBSTDAT - PREG_START_DATE)) %>%
-  filter (gest_age >= 0)
-
-
 # helper: first non-missing value in a vector
 first_non_na <- function(x) {
   i <- which(!is.na(x))[1]
@@ -401,6 +391,7 @@ dup_counts <- g6pd_criteria_raw %>%
 
 # See how many participants have duplicates
 nrow(dup_counts)
+
 ### rbc morphology----
 rbc_morph_raw  <- mnh08_raw  %>%
   select(SITE, MOMID, PREGID, M08_RBC_LBPERF_1, M08_RBC_LBPERF_2, M08_RBC_THALA_LBORRES, starts_with("M08_RBC_THALA"),
@@ -432,7 +423,6 @@ rbc_morph_raw  <- mnh08_raw  %>%
 
       # Case 5: grepl condition with M08_RBC_THALA_19 if it has trait/any regular hemoglobanopathy without disease
       (grepl("TRAIT|AF|FC|AE|AS|HbG|Normal|HbJ|HbF|", M08_RBC_SPFY_THALA, ignore.case = TRUE) & M08_RBC_THALA_19 == 1) ~ 1,
-
 
       # Default case
       TRUE ~ 55
@@ -510,7 +500,7 @@ site_reported_hc <- reduce(sheet_list, full_join, by = c("SITE", "MOMID", "PREGI
 
 ##merge maternal data after remapp luanches----
 df_maternal <- screen_df_clean %>%
-  filter (ELIGIBLE == 1 & ENROLL_NO_ISSUES == 1) %>% 
+  filter (ELIGIBLE == 1 & PRISMA_ENROLL == 1) %>% 
   left_join(MAT_ENROLL, by = c("SITE", "MOMID", "PREGID", "SCRNID")) %>% 
   left_join(mnh00_df, by = c("SITE", "SCRNID")) %>% 
   left_join(mnh03, by = c("SITE", "MOMID", "PREGID")) %>% 
@@ -715,7 +705,7 @@ prep_criteria <- df_maternal %>%
     CRIT_UNPL_CESARIAN = case_when(
       M04_UNPL_CESARIAN_PROCCUR == 1 ~ 0, 
       M04_PH_PREV_RPORRES == 0 | M04_UNPL_CESARIAN_PROCCUR == 0 ~ 1,
-      M04_UNPL_CESARIAN_PROCCUR == 99 ~ 0,
+      M04_UNPL_CESARIAN_PROCCUR == 99 ~ 1,
       SITE_REPORTED_C8 %in% c(1,0) ~ SITE_REPORTED_C8,
       TRUE ~ 55 
     ),
