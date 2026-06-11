@@ -14,6 +14,8 @@ library(BRINDA)
 library(dplyr)
 library(readxl)
 
+#Set date of data upload 
+#PRISMA sites upload data on a biweely schedule
 UploadDate = "2026-01-30"
 PrevDate = "2025-10-31"
 
@@ -41,7 +43,10 @@ derived_data_dir <- file.path(new_dir, "derived_data")
 if (!dir.exists(derived_data_dir)) {
   dir.create(derived_data_dir)
 }
+#path to tnt drive
+path_to_tnt <- paste0("Z:/Outcome Data/", UploadDate, "/")
 
+# Clean date function is used because a lot of raw data are used
 clean_date <- function(x, min_year = 2019) {
   
   # Handle numeric Excel serials
@@ -116,7 +121,10 @@ if (file.exists("derived_data/INF_OUTCOMES.rda")) {
   save(INF_OUTCOMES, file = "derived_data/INF_OUTCOMES.rda")
 }
 
-INF_OUTCOMES <- INF_OUTCOMES %>% 
+
+###create maternal inf preterm dataset ----
+#This is used in senstivity analysis for adverse outcomes
+mat_inf_preterm <- INF_OUTCOMES %>% 
   filter(!is.na(INFANTID)) %>% 
   select(SITE, MOMID, PREGID, INFANTID, PRETERMBIRTH_LT37) %>% 
   group_by(SITE, MOMID, PREGID) %>% 
@@ -135,6 +143,7 @@ if (file.exists("derived_data/MAT_GWG.rda")) {
   
 }
 
+## To test if the weight enroll was the right variable we test manual vs numbers provided in mat_gwg
 bmi_df <- MAT_GWG %>%
   ungroup() %>%
   select(
@@ -147,6 +156,7 @@ bmi_df <- MAT_GWG %>%
   group_by(SITE, MOMID, PREGID, BMI_IMPUTTED) %>%
   slice_head(n = 1) %>%
   ungroup() %>%
+  #This is to test the bmi calculation from the GWG dataset
   mutate(
     # Convert height to meters
     HEIGHT_M = HEIGHT_ENROLL / 100,
@@ -163,6 +173,7 @@ bmi_df <- MAT_GWG %>%
   ) %>% 
   filter (!is.na(WEIGHT_IMPUTED_FLAG))
 
+hist (bmi_df$BMI_DIFF)
 
 ##load mat flowchart dataset----
 if (file.exists("derived_data/MAT_FLOWCHART.rda")) {
@@ -210,7 +221,187 @@ mnh00_df <- mnh00 %>%
                                  TRUE ~ M00_ESTIMATED_AGE)
   )
 
+##load mnh01 and save ----
+if (file.exists("derived_data/mnh01.rda")) {
+  load("derived_data/mnh01.rda")   # loads mnh03
+} else {
+  mnh01 <- read.csv(paste0("Z:/Stacked Data/", UploadDate, "/mnh01_merged.csv")) 
+  save(mnh01, file = "derived_data/mnh01.rda")
+}
+
+##load mnh02 and keep necessary variables----
+if (file.exists("derived_data/mnh02.rda")) {
+  load("derived_data/mnh02.rda")   # loads mnh03
+} else {
+  mnh02 <- read.csv(paste0("Z:/Stacked Data/", UploadDate, "/mnh02_merged.csv")) 
+  save(mnh02, file = "derived_data/mnh02.rda")
+}
+
+##mapping SCRNID to MOMID and PREGID ----
+## this is more complex due to Zambia data missing MOMID PREGID for some SCRNDID and vice versa
+
+na_variations <- c("n/a", "N/A", "na", "NA", "", " ")
+
+is_missing <- function(x) {
+  x2 <- trimws(tolower(as.character(x)))
+  is.na(x) | x2 %in% trimws(tolower(na_variations))
+}
+
+# Normalize missing-like values to NA
+for (col in c("SCRNID", "MOMID", "PREGID")) {
+  if (col %in% names(mnh01)) mnh01[[col]][is_missing(mnh01[[col]])] <- NA
+  if (col %in% names(mnh02)) mnh02[[col]][is_missing(mnh02[[col]])] <- NA
+}
+
+# Reference table (dedup)
+ref <- unique(mnh02[, c("SCRNID", "MOMID", "PREGID")])
+
+# Keep original order
+mnh01$.rowid <- seq_len(nrow(mnh01))
+
+# Split rows by what keys are available
+has_scr <- !is_missing(mnh01$SCRNID)
+has_m   <- !is_missing(mnh01$MOMID)
+has_p   <- !is_missing(mnh01$PREGID)
+
+idx_scr <- which(has_scr)
+idx_mp  <- which(!has_scr & has_m & has_p)
+idx_m   <- which(!has_scr & has_m & !has_p)
+idx_p   <- which(!has_scr & !has_m & has_p)
+idx_none<- which(!has_scr & !has_m & !has_p)
+
+out_parts <- list()
+
+# 1) Merge by SCRNID (bring MOMID/PREGID only)
+if (length(idx_scr) > 0) {
+  ref_scr <- unique(ref[!is_missing(ref$SCRNID), c("SCRNID","MOMID","PREGID")])
+  
+  x <- merge(
+    mnh01[idx_scr, ],
+    ref_scr,
+    by = "SCRNID",
+    all.x = TRUE,
+    suffixes = c("", ".ref")
+  )
+  
+  x$MOMID  <- ifelse(is_missing(x$MOMID),  x$MOMID.ref,  x$MOMID)
+  x$PREGID <- ifelse(is_missing(x$PREGID), x$PREGID.ref, x$PREGID)
+  
+  x$MOMID.ref <- NULL
+  x$PREGID.ref <- NULL
+  
+  out_parts[["scr"]] <- x
+}
+
+# 2) Merge by MOMID + PREGID (bring SCRNID only)
+if (length(idx_mp) > 0) {
+  ref_mp <- unique(ref[!is_missing(ref$MOMID) & !is_missing(ref$PREGID) & !is_missing(ref$SCRNID),
+                       c("MOMID","PREGID","SCRNID")])
+  
+  # enforce unique MOMID+PREGID -> SCRNID mapping
+  key <- paste(ref_mp$MOMID, ref_mp$PREGID, sep="||")
+  ref_mp <- ref_mp[!duplicated(key), ]
+  
+  x <- merge(
+    mnh01[idx_mp, ],
+    ref_mp,
+    by = c("MOMID","PREGID"),
+    all.x = TRUE,
+    suffixes = c("", ".ref")
+  )
+  
+  x$SCRNID <- ifelse(is_missing(x$SCRNID), x$SCRNID.ref, x$SCRNID)
+  x$SCRNID.ref <- NULL
+  
+  out_parts[["mp"]] <- x
+}
+
+# helper: keep only IDs that map uniquely to one SCRNID
+unique_map <- function(df, key_col) {
+  # df has columns: key_col + SCRNID
+  agg <- aggregate(df$SCRNID, by = list(df[[key_col]]), FUN = function(z) length(unique(z)))
+  names(agg) <- c(key_col, "n_scr")
+  df2 <- merge(df, agg, by = key_col, all.x = TRUE)
+  df2 <- df2[df2$n_scr == 1, c(key_col, "SCRNID")]
+  unique(df2)
+}
+
+# 3) Merge by MOMID only (only if PREGID empty AND MOMID->SCRNID is unique)
+if (length(idx_m) > 0) {
+  ref_m <- ref[!is_missing(ref$MOMID) & !is_missing(ref$SCRNID), c("MOMID","SCRNID")]
+  ref_m <- unique_map(ref_m, "MOMID")
+  
+  x <- merge(
+    mnh01[idx_m, ],
+    ref_m,
+    by = "MOMID",
+    all.x = TRUE,
+    suffixes = c("", ".ref")
+  )
+  
+  x$SCRNID <- ifelse(is_missing(x$SCRNID), x$SCRNID.ref, x$SCRNID)
+  x$SCRNID.ref <- NULL
+  
+  out_parts[["m"]] <- x
+}
+
+# 4) Merge by PREGID only (only if MOMID empty AND PREGID->SCRNID is unique)
+if (length(idx_p) > 0) {
+  ref_p <- ref[!is_missing(ref$PREGID) & !is_missing(ref$SCRNID), c("PREGID","SCRNID")]
+  ref_p <- unique_map(ref_p, "PREGID")
+  
+  x <- merge(
+    mnh01[idx_p, ],
+    ref_p,
+    by = "PREGID",
+    all.x = TRUE,
+    suffixes = c("", ".ref")
+  )
+  
+  x$SCRNID <- ifelse(is_missing(x$SCRNID), x$SCRNID.ref, x$SCRNID)
+  x$SCRNID.ref <- NULL
+  
+  out_parts[["p"]] <- x
+}
+
+# 5) Rows with no usable keys: keep as-is
+if (length(idx_none) > 0) {
+  out_parts[["none"]] <- mnh01[idx_none, ]
+}
+
+# Recombine + restore original order
+mnh01 <- do.call(rbind, out_parts)
+mnh01 <- mnh01[order(mnh01$.rowid), ]
+mnh01$.rowid <- NULL
+
+##creating ultrasound fetus count dataset ----
+mnh01_us_df <- mnh01 %>% 
+  ungroup() %>%
+  select(SITE, MOMID, PREGID, M01_TYPE_VISIT, M01_FETUS_CT_PERES_US, M01_US_OHOSTDAT) %>% 
+  
+  mutate(
+    US_FETUS_COUNT = case_when(
+      M01_FETUS_CT_PERES_US > 0 ~ M01_FETUS_CT_PERES_US,
+      TRUE ~ NA_real_
+    )
+  ) %>% 
+  
+  # FIXED TYPO HERE
+  filter(M01_TYPE_VISIT %in% c(1, 2, 13)) %>% 
+  
+  # keep only valid fetus counts
+  filter(!is.na(US_FETUS_COUNT)) %>% 
+  
+  group_by(SITE, MOMID, PREGID) %>%
+  
+  # pick earliest ultrasound with non-zero fetus count
+  slice_min(order_by = M01_US_OHOSTDAT, with_ties = FALSE) %>%
+  
+  ungroup()
+
+
 ##load mnh03 and keep necessary variables----
+#Use MAT_DEMOGRAPHICS is needed in replacement
 if (file.exists("derived_data/mnh03.rda")) {
   load("derived_data/mnh03.rda")   # loads mnh03
 } else {
@@ -232,7 +423,7 @@ if (file.exists("derived_data/mnh04_raw.rda")) {
 }
 
 mnh04<-  mnh04_raw %>% 
-  filter(M04_TYPE_VISIT == 1) %>% 
+  filter(M04_TYPE_VISIT == 1) %>% #filtering only enrolment data
   select(SITE, MOMID, PREGID, M04_PRETERM_RPORRES, M04_PH_PREV_RPORRES, M04_PH_PREVN_RPORRES, M04_PH_LIVE_RPORRES, 
          M04_MISCARRIAGE_RPORRES, M04_MISCARRIAGE_CT_RPORRES, M04_PH_OTH_RPORRES,M04_STILLBIRTH_RPORRES,
          M04_LOWBIRTHWT_RPORRES, M04_MALARIA_EVER_MHOCCUR, 
@@ -242,11 +433,18 @@ mnh04<-  mnh04_raw %>%
          M04_MACROSOMIA_RPORRES, M04_OLIGOHYDRAMNIOS_RPORRES,
          M04_APH_RPORRES, M04_PPH_RPORRES)
 
-#test for duplicates
-test_dup_04 <- mnh04 %>%
-  group_by(SITE, MOMID, PREGID) %>%
-  filter(n() > 1) %>%
-  ungroup()
+#test for duplicates mnh04
+# Count duplicate rows by SITE + MOMID + PREGID
+n_dups <- mnh04 %>%
+  count(SITE, MOMID, PREGID) %>%
+  filter(n > 1) %>%
+  nrow()
+
+if (n_dups == 0) {
+  cat("No enrolment duplicates found in mnh04.\n")
+} else {
+  cat(n_dups, "duplicate SITE-MOMID-PREGID combinations for mnh04 enrolment found.\n")
+}
 
 
 ##load mnh05 and keep necessary variables----
@@ -254,36 +452,51 @@ if (file.exists("derived_data/mnh05.rda")) {
   load("derived_data/mnh05.rda")   # loads mnh05
 } else {
   mnh05 <- read.csv(paste0("Z:/Stacked Data/",UploadDate,"/mnh05_merged.csv")) %>% 
-    filter(M05_TYPE_VISIT == 1) %>% 
+    filter(M05_TYPE_VISIT == 1) %>% #filter only enrolment data
     select(SITE, MOMID, PREGID, M05_ANT_PEDAT, M05_WEIGHT_PERES, M05_HEIGHT_PERES, M05_MUAC_PERES)
     save(mnh05, file = "derived_data/mnh05.rda")
 }
 
-test_dup_05 <- mnh05 %>%
-  group_by(SITE, MOMID, PREGID) %>%
-  filter(n() > 1) %>%
-  ungroup()
+#test for duplicates mnh05
+# Count duplicate rows by SITE + MOMID + PREGID
+n_dups <- mnh05 %>%
+  count(SITE, MOMID, PREGID) %>%
+  filter(n > 1) %>%
+  nrow()
+
+if (n_dups == 0) {
+  cat("No enrolment duplicates found in mnh05.\n")
+} else {
+  cat(n_dups, "duplicate SITE-MOMID-PREGID combinations for mnh05 enrolment found.\n")
+}
 
 ##load mnh06 and keep necessary variables----
 if (file.exists("derived_data/mnh06.rda")) {
   load("derived_data/mnh06.rda")   # loads mnh06
 } else {
   mnh06 <- read.csv(paste0("Z:/Stacked Data/",UploadDate,"/mnh06_merged.csv")) %>% 
-    filter(M06_TYPE_VISIT == 1) %>% 
+    filter(M06_TYPE_VISIT == 1) %>% #filter only enrolment dataset
     select(SITE, MOMID, PREGID, M06_SINGLETON_PERES, 
            M06_BP_SYS_VSORRES_1, M06_BP_SYS_VSORRES_2, M06_BP_SYS_VSORRES_3,
            M06_BP_DIA_VSORRES_1, M06_BP_DIA_VSORRES_2, M06_BP_DIA_VSORRES_3,
            M06_MALARIA_POC_LBORRES, M06_MALARIA_POC_LBPERF, 
            M06_HBV_POC_LBORRES, M06_HBV_POC_LBPERF, M06_HCV_POC_LBORRES, M06_HCV_POC_LBPERF,
-           M06_HIV_POC_LBORRES, M06_HIV_POC_LBPERF,
-           num_range("M06_HB_POC_LBORRES_",1:12)) #update to include all visits
+           M06_HIV_POC_LBORRES, M06_HIV_POC_LBPERF)
   save(mnh06, file = "derived_data/mnh06.rda")
 }
 
-test_dup_06 <- mnh06 %>%
-  group_by(SITE, MOMID, PREGID) %>%
-  filter(n() > 1) %>%
-  ungroup()
+#test for duplicates mnh06
+# Count duplicate rows by SITE + MOMID + PREGID
+n_dups <- mnh06 %>%
+  count(SITE, MOMID, PREGID) %>%
+  filter(n > 1) %>%
+  nrow()
+
+if (n_dups == 0) {
+  cat("No enrolment duplicates found in mnh06.\n")
+} else {
+  cat(n_dups, "duplicate SITE-MOMID-PREGID combinations for mnh06 enrolment found.\n")
+}
 
 ##load mnh08 and keep necessary variables----
 if (file.exists("derived_data/mnh08_raw.rda")) {
@@ -293,14 +506,17 @@ if (file.exists("derived_data/mnh08_raw.rda")) {
   save(mnh08_raw, file = "derived_data/mnh08_raw.rda")
 }
 
-###Kenya g6pd----
+### Kenya g6pd----
 ## kenya g6pd variables 
+##Kenya team uses two G6PD test, the one harmonized and another test result in RBC_G6PD_LBORRES_Interpret 
+##To use those results, we are pulling them seperately since interpreted differently
 m08_g6pd_ke <- read.csv(paste0("Z:/PRISMA_Data_Uploads/", UploadDate,"/",UploadDate, "_ke/mnh08.csv")) %>% 
   transmute(MOMID, PREGID, M08_TYPE_VISIT  = TYPE_VISIT, RBC_G6PD_LBORRES_Interpret, SITE = "Kenya") %>% 
   filter(RBC_G6PD_LBORRES_Interpret %in% c(1,2,3))
 
 # For MNH08 quanys variables - phasing out the use of TYPE_VISIT, therefore, 
 ## we are taking the first non missing lab value measured between 0 and 139 days
+## PJW comment: Ferritin adjustments will be updated to BRINDA at a later date
 # helper: first non-missing value in a vector
 first_non_na <- function(x) {
   i <- which(!is.na(x))[1]
@@ -350,6 +566,7 @@ mnh08 <- mnh08_raw %>%
   )
 
 ### g6pd Criteria----
+#At this point we merge Kenya G6PD with criteria raw
 # Step 1: Create G6PD criteria
 g6pd_criteria_raw <- mnh08_raw %>%
   left_join(m08_g6pd_ke, by = c("MOMID", "PREGID", "M08_TYPE_VISIT", "SITE"))  %>%
@@ -369,29 +586,66 @@ g6pd_criteria_raw <- mnh08_raw %>%
          CRIT_G6PD)
 
 # Step 2: Select the EARLIEST G6PD result by date
+# Collapse to one record per pregnancy
+# CRIT_G6PD is set to 1 if any record for the pregnancy meets criteria
 g6pd_criteria <- g6pd_criteria_raw %>%
   group_by(SITE, MOMID, PREGID) %>%
-  arrange(M08_LBSTDAT, .by_group = TRUE) %>%  # earliest first
-  slice(1) %>%
-  ungroup() %>%
-  select(SITE, MOMID, PREGID, M08_RBC_G6PD_LBORRES, M08_LBSTDAT, CRIT_G6PD)
+  arrange(M08_LBSTDAT, .by_group = TRUE) %>%
+  summarise(
+    
+    # Earliest G6PD lab date
+    M08_LBSTDAT = first(M08_LBSTDAT),
+    
+    # G6PD result from the earliest lab date
+    M08_RBC_G6PD_LBORRES = first(M08_RBC_G6PD_LBORRES),
+    
+    # Flag pregnancy if any duplicate record met G6PD criteria
+    CRIT_G6PD = as.integer(any(CRIT_G6PD == 1, na.rm = TRUE)),
+    
+    .groups = "drop"
+  )
 
-# Query - Step 3: Flag if participant had conflicting G6PD criteria across dates
-g6pd_conflict_flag <- g6pd_criteria_raw %>%
-  group_by(SITE, MOMID, PREGID) %>%
-  summarise(n_unique = n_distinct(CRIT_G6PD), .groups = "drop") %>%
-  mutate(conflict_flag = ifelse(n_unique > 1, TRUE, FALSE)) %>%
-  filter (conflict_flag == TRUE) %>%
-  left_join(g6pd_criteria_raw, by= c("SITE", "MOMID", "PREGID"))
-
+# Step 3: Identify participants with duplicate G6PD records
 dup_counts <- g6pd_criteria_raw %>%
   group_by(SITE, MOMID, PREGID) %>%
-  summarise(n = n(), .groups = "drop") %>%
-  filter(n > 1)
+  summarise(
+    n_records = n(),
+    .groups = "drop"
+  ) %>%
+  filter(n_records > 1)
 
-# See how many participants have duplicates
-nrow(dup_counts)
+# Number of participants with duplicate records
+n_dup_participants <- nrow(dup_counts)
 
+# Step 4: Among participants with duplicates, identify conflicts in CRIT_G6PD
+# A conflict occurs when both 0 and 1 are present across records
+g6pd_conflict_flag <- g6pd_criteria_raw %>%
+  group_by(SITE, MOMID, PREGID) %>%
+  summarise(
+    n_unique = n_distinct(CRIT_G6PD, na.rm = TRUE),
+    conflict_flag = n_unique > 1,
+    .groups = "drop"
+  ) %>%
+  filter(conflict_flag)
+
+# Number of participants with conflicting CRIT_G6PD values
+n_conflict_participants <- nrow(g6pd_conflict_flag)
+
+# View all records for participants with conflicts
+g6pd_conflict_records <- g6pd_conflict_flag %>%
+  select(SITE, MOMID, PREGID) %>%
+  left_join(g6pd_criteria_raw,
+            by = c("SITE", "MOMID", "PREGID"))
+
+# Print summary
+cat("Participants with duplicate G6PD records:", n_dup_participants, "\n")
+cat("Participants with conflicting CRIT_G6PD values:", n_conflict_participants, "\n")
+# Percent of duplicate participants with conflicts
+cat(
+  "Percent of duplicate participants with G6PD conflicts:",
+  round(100 * n_conflict_participants / n_dup_participants, 1),
+  "%\n"
+)
 ### rbc morphology----
 rbc_morph_raw  <- mnh08_raw  %>%
   select(SITE, MOMID, PREGID, M08_RBC_LBPERF_1, M08_RBC_LBPERF_2, M08_RBC_THALA_LBORRES, starts_with("M08_RBC_THALA"),
@@ -415,10 +669,10 @@ rbc_morph_raw  <- mnh08_raw  %>%
 
       # Case 4: All M08_RBC_THALA_x are 0, but M08_RBC_THALA_16, 17, or 18 is 1 OR thala test results are 0
       ((M08_RBC_THALA_1 %in% c(0,77) & M08_RBC_THALA_2 %in% c(0,77) & M08_RBC_THALA_3 %in% c(0,77) & M08_RBC_THALA_4 %in% c(0,77) &
-          M08_RBC_THALA_5 %in% c(0,77) & M08_RBC_THALA_6 %in% c(0,77) & M08_RBC_THALA_7 %in% c(0,77) & M08_RBC_THALA_8 %in% c(0,77) &
-          M08_RBC_THALA_9 %in% c(0,77) & M08_RBC_THALA_10 %in% c(0,77) & M08_RBC_THALA_11 %in% c(0,77) & M08_RBC_THALA_12 %in% c(0,77) &
-          M08_RBC_THALA_13 %in% c(0,77) & M08_RBC_THALA_14 %in% c(0,77)) &
-         (M08_RBC_THALA_15 == 1 | M08_RBC_THALA_16 == 1 | M08_RBC_THALA_17 == 1 | M08_RBC_THALA_18 == 1)) |
+        M08_RBC_THALA_5 %in% c(0,77) & M08_RBC_THALA_6 %in% c(0,77) & M08_RBC_THALA_7 %in% c(0,77) & M08_RBC_THALA_8 %in% c(0,77) &
+        M08_RBC_THALA_9 %in% c(0,77) & M08_RBC_THALA_10 %in% c(0,77) & M08_RBC_THALA_11 %in% c(0,77) & M08_RBC_THALA_12 %in% c(0,77) &
+        M08_RBC_THALA_13 %in% c(0,77) & M08_RBC_THALA_14 %in% c(0,77)) &
+       (M08_RBC_THALA_15 == 1 | M08_RBC_THALA_16 == 1 | M08_RBC_THALA_17 == 1 | M08_RBC_THALA_18 == 1)) |
         M08_RBC_THALA_LBORRES == 0 ~ 1,
 
       # Case 5: grepl condition with M08_RBC_THALA_19 if it has trait/any regular hemoglobanopathy without disease
@@ -427,6 +681,7 @@ rbc_morph_raw  <- mnh08_raw  %>%
       # Default case
       TRUE ~ 55
     ))
+
 # Step 2: Remove duplicates (keep one row per participant)
 # (Assume: no specific date available ??? pick the record where CRIT_HEMOGLOBINOPATHIES is not 55 first if possible)
 rbc_morph_criteria <- rbc_morph_raw %>%
@@ -435,11 +690,52 @@ rbc_morph_criteria <- rbc_morph_raw %>%
   slice(1) %>%
   ungroup()
 
-# Step 3: Flag participants with discrepancies (differing CRIT_HEMOGLOBINOPATHIES across records)
+# Step 3: Identify participants with duplicate RBC morphology records
+dup_counts_rbc <- rbc_morph_raw %>%
+  group_by(SITE, MOMID, PREGID) %>%
+  summarise(
+    n_records = n(),
+    .groups = "drop"
+  ) %>%
+  filter(n_records > 1)
+
+# Number of participants with duplicate records
+n_dup_participants_rbc <- nrow(dup_counts_rbc)
+
+# Step 4: Among participants with duplicates, identify conflicts in
+# CRIT_HEMOGLOBINOPATHIES.
+# A conflict occurs when both 0 and 1 are present across records.
 rbc_morph_conflict_flag <- rbc_morph_raw %>%
   group_by(SITE, MOMID, PREGID) %>%
-  summarise(n_unique = n_distinct(CRIT_HEMOGLOBINOPATHIES), .groups = "drop") %>%
-  mutate(conflict_flag = ifelse(n_unique > 1, TRUE, FALSE))
+  summarise(
+    n_unique = n_distinct(CRIT_HEMOGLOBINOPATHIES, na.rm = TRUE),
+    conflict_flag = n_unique > 1,
+    .groups = "drop"
+  ) %>%
+  filter(conflict_flag)
+
+# Number of participants with conflicting values
+n_conflict_participants_rbc <- nrow(rbc_morph_conflict_flag)
+
+# View all records for participants with conflicts
+rbc_morph_conflict_records <- rbc_morph_conflict_flag %>%
+  select(SITE, MOMID, PREGID) %>%
+  left_join(
+    rbc_morph_raw,
+    by = c("SITE", "MOMID", "PREGID")
+  )
+
+# Print summary
+cat("Participants with duplicate records:", n_dup_participants_rbc, "\n")
+cat("Participants with conflicting CRIT_HEMOGLOBINOPATHIES values:", 
+    n_conflict_participants_rbc, "\n")
+
+# Percent of duplicate participants with conflicts
+cat(
+  "Percent of duplicate participants with conflicts:",
+  round(100 * n_conflict_participants_rbc / n_dup_participants_rbc, 1),
+  "%\n"
+)
 
 ##load mnh09 and keep necessary variables---
 if (file.exists("derived_data/mnh09.rda")) {
@@ -453,8 +749,27 @@ if (file.exists("derived_data/mnh09.rda")) {
   save(mnh09, file = "derived_data/mnh09.rda")
 }
 
+##load in severe mat complications datasets ----
+if (file.exists("derived_data/MAT_INFECTION.rda")) {
+  load("derived_data/MAT_INFECTION.rda")   # loads MAT_ENROLL
+} else {
+  MAT_INFECTION <- read.csv(paste0("Z:/Outcome Data/", UploadDate, "/MAT_INFECTION.csv"))
+  save(MAT_INFECTION, file = "derived_data/MAT_INFECTION.rda")
+}
+
+
+if (file.exists("derived_data/MAT_NEAR_MISS.rda")) {
+  load("derived_data/MAT_NEAR_MISS.rda")   # loads MAT_ENROLL
+} else {
+  MAT_NEAR_MISS <- read_dta(paste0("Z:/Outcome Data/", UploadDate, "/MAT_NEAR_MISS.dta"))
+  save(MAT_NEAR_MISS, file = "derived_data/MAT_NEAR_MISS.rda")
+}
+
 
 ##load in site reported health cohort ----
+#Some sites have manually reported missing healthy cohort data
+#These are providid in ReMAPP_Healthy_Cohort_IDs.xlsx on shared TNT drive 
+
 # Identify sheets C1–C20
 library(readxl)
 library(dplyr)
@@ -503,6 +818,7 @@ df_maternal <- screen_df_clean %>%
   filter (ELIGIBLE == 1 & PRISMA_ENROLL == 1) %>% 
   left_join(MAT_ENROLL, by = c("SITE", "MOMID", "PREGID", "SCRNID")) %>% 
   left_join(mnh00_df, by = c("SITE", "SCRNID")) %>% 
+  left_join(mnh01_us_df, by = c("SITE", "MOMID", "PREGID")) %>% 
   left_join(mnh03, by = c("SITE", "MOMID", "PREGID")) %>% 
   left_join(mnh04, by = c("SITE", "MOMID", "PREGID")) %>% 
   left_join(mnh05, by = c("SITE", "MOMID", "PREGID")) %>% 
@@ -525,46 +841,19 @@ df_maternal <- df_maternal %>%
   mutate(FERRITIN_LBORRES  = M08_FERRITIN_LBORRES)
 
 ### adjusting ferritin units----
-p50_ferritin_gh  <- median(df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "Ghana"], na.rm = TRUE)
-p50_ferritin_cmc  <- median(df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "India-CMC"], na.rm = TRUE)
-p50_ferritin_sas  <- median(df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "India-SAS"], na.rm = TRUE)
-p50_ferritin_ky  <- median(df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "Kenya"], na.rm = TRUE)
-p50_ferritin_pk  <- median(df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "Pakistan"], na.rm = TRUE)
-p50_ferritin_zm  <- median(df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "Zambia"], na.rm = TRUE)
-
-if (p50_ferritin_gh < 10 ) {
-  df_maternal$FERRITIN_LBORRES[df_maternal$SITE == "Ghana"] <- df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "Ghana"] * 10
-} else  { df_maternal$FERRITIN_LBORRES[df_maternal$SITE == "Ghana"] <- df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "Ghana"]
-}
-
-
-if (p50_ferritin_cmc < 10 ) {
-  df_maternal$FERRITIN_LBORRES[df_maternal$SITE == "India-CMC"] <- df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "India-CMC"] * 10
-} else  { df_maternal$FERRITIN_LBORRES[df_maternal$SITE == "India-CMC"] <- df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "India-CMC"]
-}
-
-
-if (p50_ferritin_sas < 10 ) {
-  df_maternal$FERRITIN_LBORRES[df_maternal$SITE == "India-SAS"] <- df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "India-SAS"] * 10
-} else  { df_maternal$FERRITIN_LBORRES[df_maternal$SITE == "India-SAS"] <- df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "India-SAS"]
-}
-
-
-if (p50_ferritin_ky < 15 ) {
-  df_maternal$FERRITIN_LBORRES[df_maternal$SITE == "Kenya"] <- df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "Kenya"] * 10
-} else  { df_maternal$FERRITIN_LBORRES[df_maternal$SITE == "Kenya"] <- df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "Kenya"]
-}
-
-if (p50_ferritin_pk < 10 ) {
-  df_maternal$FERRITIN_LBORRES[df_maternal$SITE == "Pakistan"] <- df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "Pakistan"] * 10
-} else  { df_maternal$FERRITIN_LBORRES[df_maternal$SITE == "Pakistan"] <- df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "Pakistan"]
-}
-
-
-if (p50_ferritin_zm < 10 ) {
-  df_maternal$FERRITIN_LBORRES[df_maternal$SITE == "Zambia"] <- df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "Zambia"] * 10
-} else  { df_maternal$FERRITIN_LBORRES[df_maternal$SITE == "Zambia"] <- df_maternal$M08_FERRITIN_LBORRES[df_maternal$SITE == "Zambia"]
-}
+# Temporary ferritin unit adjustment based on site-specific median ferritin values.
+# This will be replaced with BRINDA-adjusted ferritin values in a future update.
+df_maternal <- df_maternal %>%
+  group_by(SITE) %>%
+  mutate(
+    FERRITIN_LBORRES = ifelse(
+      (SITE == "Kenya"  & median(M08_FERRITIN_LBORRES, na.rm = TRUE) < 15) |
+        (SITE != "Kenya" & median(M08_FERRITIN_LBORRES, na.rm = TRUE) < 10),
+      M08_FERRITIN_LBORRES * 10,
+      M08_FERRITIN_LBORRES
+    )
+  ) %>%
+  ungroup()
 
 ##prep criteria df ----
 prep_criteria <- df_maternal %>%
@@ -625,10 +914,6 @@ prep_criteria <- df_maternal %>%
       TRUE                                       ~ 55
     ),
     
-    # TEMP_BMI_INPUT = ifelse(BMI_IMPUT <= 18.5 | BMI_IMPUT >= 30, 0, 
-    #                   ifelse(BMI_IMPUT > 18.5 & BMI_IMPUT < 30, 1, 55)
-    # ),
-    
     # MUAC mid-upper arm circumference - MUAC
     TEMP_MUAC = case_when (M05_MUAC_PERES > 0 & M05_MUAC_PERES <= 23 ~ 0, 
                            M05_MUAC_PERES > 23 ~ 1, 
@@ -640,6 +925,7 @@ prep_criteria <- df_maternal %>%
       BMI_IMPUT == 0 | TEMP_MUAC == 0 ~ 0, 
       #Then afterward use raw BMI for missing imputted BMI 
       ##This is a temp fix, to follow up with Lili
+      ##Lili fixed this, but as a precaution, leaving it in
       TEMP_BMI == 1 & TEMP_MUAC == 1 ~ 1, 
       TEMP_BMI == 0 | TEMP_MUAC == 0 ~ 0, 
       TRUE ~ 55
@@ -655,9 +941,10 @@ prep_criteria <- df_maternal %>%
                          ifelse(M05_HEIGHT_PERES >= 150, 1, 55)
     ),
     ## E. singleton pregnancy----
-    CRIT_SINGLEPREG = ifelse(M06_SINGLETON_PERES == 0, 0,
-                             ifelse(M06_SINGLETON_PERES == 1, 1, 55)
-    ),
+    ##Modified this from self-report to Ultrasound
+    CRIT_SINGLEPREG = case_when(US_FETUS_COUNT == 1 ~ 1,
+                             US_FETUS_COUNT > 1 ~ 0,
+                             TRUE ~ 55),
     ## G. no subclinical inflammation (CRP<=5 and/or AGP<=1) check unit (mg/L for CRP and g/L for AGP in dd) double check the calculation before use----
     CRIT_INFLAM = case_when(
       M08_CRP_LBORRES >= 0 & M08_CRP_LBORRES <= 5 & M08_AGP_LBORRES > 0 & M08_AGP_LBORRES <= 1 ~ 1,
@@ -677,7 +964,7 @@ prep_criteria <- df_maternal %>%
     CRIT_BP = case_when(
       # If systolic < 140 and diastolic < 90, and both > 0 → eligible
       M06_BP_SYS_1 > 0 & M06_BP_SYS_1 < 140 & 
-        M06_BP_DIA_1 > 0 & M06_BP_DIA_1 < 90 ~ 1,
+      M06_BP_DIA_1 > 0 & M06_BP_DIA_1 < 90 ~ 1,
       
       # If systolic ≥ 140 or diastolic ≥ 90 → ineligible
       M06_BP_SYS_1 >= 140 | M06_BP_DIA_1 >= 90 ~ 0,
@@ -689,23 +976,33 @@ prep_criteria <- df_maternal %>%
     ### H.b. no previous low birth weight delivery----
     CRIT_LBW = case_when(
       M04_LOWBIRTHWT_RPORRES == 1 ~ 0,  # had LBW → ineligible
+      
       M04_PH_PREV_RPORRES == 0 | M04_LOWBIRTHWT_RPORRES == 0 ~ 1,  # no previous pregnancy or no LBW → eligible
-      M04_LOWBIRTHWT_RPORRES == 99 ~ 0,  # don't know → assume ineligible
+      
+      M04_LOWBIRTHWT_RPORRES == 99 ~ 1,  # don't know → assume eligible (by protocol)
       TRUE ~ 55  # all other cases → pending
     ),
     ### H.c. no previous reported stillbirth----
     CRIT_STILLBIRTH = case_when(
       M04_STILLBIRTH_RPORRES == 1 ~ 0,  # stillbirth reported → ineligible
+      
       M04_PH_PREV_RPORRES == 0 | 
-        M04_PH_OTH_RPORRES == 0 | 
-        M04_STILLBIRTH_RPORRES == 0 ~ 1,  # no prior pregnancy, no other history, or no stillbirth → eligible
+      M04_PH_OTH_RPORRES == 0 | 
+      M04_STILLBIRTH_RPORRES == 0 ~ 1,  # no prior pregnancy, no other history, or no stillbirth → eligible
+      
+      M04_PH_OTH_RPORRES == 99 | 
+      M04_STILLBIRTH_RPORRES == 99 ~ 1,  # if no recall of prior pregnancy complication or unknown stillbirth → eligible (by protocol)
+      
       TRUE ~ 55  # all other cases → pending
     ),
     ### H.d. no previous reported unplanned cesarean delivery----
     CRIT_UNPL_CESARIAN = case_when(
       M04_UNPL_CESARIAN_PROCCUR == 1 ~ 0, 
+      
       M04_PH_PREV_RPORRES == 0 | M04_UNPL_CESARIAN_PROCCUR == 0 ~ 1,
-      M04_UNPL_CESARIAN_PROCCUR == 99 ~ 1,
+      
+      M04_UNPL_CESARIAN_PROCCUR == 99 ~ 1, #By protocol, unknown pregnancy history should be eligible
+      
       SITE_REPORTED_C8 %in% c(1,0) ~ SITE_REPORTED_C8,
       TRUE ~ 55 
     ),
@@ -723,6 +1020,7 @@ prep_criteria <- df_maternal %>%
     ),
     
     ##K. no reported cigarette smoking, tobacco chewing, or betel nut use during pregnancy----
+    ##Zambia - only collects chewing tobacco and smoking, but not betel nut
     CRIT_SMOKE = case_when(
       SITE == "Zambia" & (M03_SMOKE_OECOCCUR == 1 | M03_CHEW_OECOCCUR == 1) ~ 0,
       SITE == "Zambia" & (M03_SMOKE_OECOCCUR == 0 & M03_CHEW_OECOCCUR == 0) ~ 1,
@@ -830,7 +1128,7 @@ df_criteria <- prep_criteria %>%
 
 save(df_criteria, file = "derived_data/df_criteria.rda")
 
-
+#This is to see the number of missingness by site and which creteria has the highest %
 crit55_by_site <- df_criteria %>%
   pivot_longer(
     cols = starts_with("CRIT_"),
@@ -849,8 +1147,79 @@ crit55_by_site
 #**************************************************************************************
 #3. ELIGIBILITY DATSETS CREATED  ----
 #**************************************************************************************
+## Secondary Exclusion Criteria ----
+#Why am i doing secondary first? Because its more convenient when joining the dataset later on
+###a. Those with later malaria rdt infection in pregancy
+###b. Those with HBV, HCV, and HIV infections during pregnancy
+###c. Do a sensitivity analysis with those who had a: 
+###c1. Hospitalization (NEAR_MISS - MAT_ICU == 1)
+###c2. Severe hemorrhage (HEM_PPH_SEV_NEARMISS == 1)
+###c3. Severe preeclampsia/eclampsia
+### Question: do i exclude or include? We include for now - similar to preterm
+### We are including since it does not affect distribution but leaving the sensitivity analysis in
+secondary_exclusions <- MAT_INFECTION %>% 
+  filter (HIV_POSITIVE_EVER_PREG == 1 |
+            MAL_RDT_POSITIVE_EVER_PREG == 1 |
+            HBV_POSITIVE_EVER_PREG == 1 |
+            HCV_POSITIVE_EVER_PREG == 1) %>%
+  
+  mutate(
+    SECL_EXCLU = 1,
+    
+    SECL_EXCLU_RSN = case_when(
+      HIV_POSITIVE_EVER_PREG == 1 ~ 1,
+      MAL_RDT_POSITIVE_EVER_PREG == 1 ~ 2,
+      HBV_POSITIVE_EVER_PREG == 1 ~ 3,
+      HCV_POSITIVE_EVER_PREG == 1 ~ 4,
+      TRUE ~ NA_real_
+    ),
+    
+    SECL_EXCLU_RSN_LABEL = case_when(
+      HIV_POSITIVE_EVER_PREG == 1 ~ "hiv positive",
+      MAL_RDT_POSITIVE_EVER_PREG == 1 ~ "malaria RDT positive",
+      HBV_POSITIVE_EVER_PREG == 1 ~ "hepatitis b positive",
+      HCV_POSITIVE_EVER_PREG == 1 ~ "hepatitis c positive",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  select (SITE, MOMID, PREGID, SECL_EXCLU, SECL_EXCLU_RSN, SECL_EXCLU_RSN_LABEL)
+
+mat_near_miss <- MAT_NEAR_MISS %>%
+  mutate(MAT_ICU = as.character(as.numeric(MAT_ICU)),
+         HEM_PPH_SEV_NEARMISS = as.character(as.numeric(HEM_PPH_SEV_NEARMISS)),
+         PREECLAMPSIA_SEV_NEARMISS = as.character(as.numeric(PREECLAMPSIA_SEV_NEARMISS)),
+         ORG_FAIL = as.character(as.numeric(ORG_FAIL)))  %>%
+  
+  filter (MAT_ICU == 1 | HEM_PPH_SEV_NEARMISS == 1 | 
+          ORG_FAIL == 1 | PREECLAMPSIA_SEV_NEARMISS == 1) %>%
+  mutate(
+    NEAR_MISS = 1,
+    
+    NEAR_MISS_RSN = case_when(
+      PREECLAMPSIA_SEV_NEARMISS == 1 ~ 1,
+      HEM_PPH_SEV_NEARMISS == 1 ~ 2,
+      ORG_FAIL == 1 ~ 3,
+      MAT_ICU == 1 ~ 4,
+      TRUE ~ NA_real_
+    ),
+    
+    NEAR_MISS_RSN_LABEL = case_when(
+      PREECLAMPSIA_SEV_NEARMISS == 1 ~ "severe preeclampsia",
+      HEM_PPH_SEV_NEARMISS == 1 ~ "severe postpartum hemorrhage",
+      ORG_FAIL == 1 ~ "organ failure",
+      MAT_ICU == 1 ~ "ICU hospitalization",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  select( SITE, MOMID, PREGID, NEAR_MISS, NEAR_MISS_RSN, NEAR_MISS_RSN_LABEL)
+
+
 #code 666 for any not applicable by site
 healthyOutcome <- df_criteria %>% 
+  left_join(
+    secondary_exclusions,
+    by = c("SITE", "MOMID", "PREGID")
+  ) %>%
   rowwise() %>%
   mutate(
     HEALTHY_CHECK = sum(across(starts_with("CRIT_"), ~ .x %in% c(1, 0, 666)), na.rm = TRUE),
@@ -860,17 +1229,45 @@ healthyOutcome <- df_criteria %>%
   #   if_any(starts_with("CRIT_"), ~.x == 0) ~ 0, #Not eligible
   #   HEALTHY_CHECK < 20 ~ 3 #20 criteria
   # ) ) %>%
+  #create a all will be excluded if these criteria are first met, regardless of GA, G6PD
+  
   mutate(
-    #with all criteria
-    HEALTHY_ELIGIBLE = case_when(
+    PRIMARY_HEALTHY_ELIGIBLE = case_when(
+      CRIT_AGE == 1 &
+        CRIT_BMI_MUAC == 1 &
+        CRIT_HEIGHT == 1 &
+        CRIT_SINGLEPREG == 1 &
+        ##PJW comment - by protocol unknown values for prior preterm birth, 
+        ##low birthweight, neonatal/fetal death, or complications should be treated as eligible.
+        CRIT_LBW %in% c(1,55) & 
+        CRIT_STILLBIRTH %in% c(1,55) &
+        CRIT_UNPL_CESARIAN %in% c(1,55) &
+        CRIT_SMOKE == 1 & 
+        CRIT_DRINK %in% c(1,666) &
+        CRIT_CHRONIC == 1 &
+        CRIT_HIV == 1 &
+        CRIT_BP == 1 &
+        CRIT_MALARIA == 1 & 
+        CRIT_HEPATITISB == 1 & 
+        CRIT_HEPATITISC == 1 &
+        CRIT_IRON == 1 & 
+        CRIT_INFLAM == 1 & 
+        CRIT_HEMOGLOBINOPATHIES == 1 
+      ~ 1, 
+      TRUE ~ 0
+    ),
+    
+    PRIMARY_HEALTHY_ELIGIBLE_ALL = case_when(
       CRIT_AGE == 1 &
         CRIT_GA == 1 & 
         CRIT_BMI_MUAC == 1 &
         CRIT_HEIGHT == 1 &
         CRIT_SINGLEPREG == 1 &
-        CRIT_LBW == 1 &
-        CRIT_STILLBIRTH == 1 &
-        CRIT_UNPL_CESARIAN == 1 &
+        ##PJW comment - by protocol unknown values for prior preterm birth, 
+        ##low birthweight, neonatal/fetal death, or complications should be treated as eligible.
+        CRIT_LBW %in% c(1,55) & 
+        CRIT_STILLBIRTH %in% c(1,55) &
+        CRIT_UNPL_CESARIAN %in% c(1,55) &
         CRIT_SMOKE == 1 & 
         CRIT_DRINK %in% c(1,666) &
         CRIT_CHRONIC == 1 &
@@ -882,7 +1279,45 @@ healthyOutcome <- df_criteria %>%
         CRIT_IRON == 1 & 
         CRIT_INFLAM == 1 & 
         CRIT_HEMOGLOBINOPATHIES == 1 & 
-        CRIT_G6PD == 1 
+        CRIT_G6PD == 1  
+      ~ 1, 
+      TRUE ~ 0
+    ),
+    #Basically, i want to make sure that this only includes people who are originally healthy cohort
+    #So I am creating a primary variable to track first, then I recode based on this
+    SECL_EXCLU = if_else(is.na(SECL_EXCLU) | PRIMARY_HEALTHY_ELIGIBLE %in% c(0,55), 0, SECL_EXCLU),
+    SECL_EXCLU_RSN =  if_else(SECL_EXCLU == 0, 0, SECL_EXCLU_RSN),
+    SECL_EXCLU_RSN_LABEL =  if_else(SECL_EXCLU == 0, "n/a", SECL_EXCLU_RSN_LABEL)
+  ) %>% 
+  
+  mutate(
+    #with all criteria
+    HEALTHY_ELIGIBLE = case_when(
+      CRIT_AGE == 1 &
+        CRIT_GA == 1 & 
+        CRIT_BMI_MUAC == 1 &
+        CRIT_HEIGHT == 1 &
+        CRIT_SINGLEPREG == 1 &
+        ##PJW comment - by protocol unknown values for prior preterm birth, 
+        ##low birthweight, neonatal/fetal death, or complications should be treated as eligible.
+        CRIT_LBW %in% c(1,55) & 
+        CRIT_STILLBIRTH %in% c(1,55) &
+        CRIT_UNPL_CESARIAN %in% c(1,55) &
+        CRIT_SMOKE == 1 & 
+        CRIT_DRINK %in% c(1,666) &
+        CRIT_CHRONIC == 1 &
+        CRIT_HIV == 1 &
+        CRIT_BP == 1 &
+        CRIT_MALARIA == 1 & 
+        CRIT_HEPATITISB == 1 & 
+        CRIT_HEPATITISC == 1 &
+        CRIT_IRON == 1 & 
+        CRIT_INFLAM == 1 & 
+        CRIT_HEMOGLOBINOPATHIES == 1 & 
+        CRIT_G6PD == 1 &
+      ##Adding secondary criteria
+      ##If there is no reason secondary criteria met then include
+      SECL_EXCLU == 0
       ~ 1, 
       TRUE ~ 0
     ),
@@ -892,9 +1327,9 @@ healthyOutcome <- df_criteria %>%
         CRIT_BMI_MUAC == 1 &
         CRIT_HEIGHT == 1 &
         CRIT_SINGLEPREG == 1 &
-        CRIT_LBW == 1 &
-        CRIT_STILLBIRTH == 1 &
-        CRIT_UNPL_CESARIAN == 1 &
+        CRIT_LBW %in% c(1,55) & 
+        CRIT_STILLBIRTH %in% c(1,55) &
+        CRIT_UNPL_CESARIAN %in% c(1,55) &
         CRIT_SMOKE == 1 & 
         CRIT_DRINK %in% c(1,666) &
         CRIT_CHRONIC == 1 &
@@ -906,7 +1341,10 @@ healthyOutcome <- df_criteria %>%
         CRIT_IRON == 1 & 
         CRIT_INFLAM == 1 & 
         CRIT_HEMOGLOBINOPATHIES == 1 & 
-        CRIT_G6PD == 1 
+        CRIT_G6PD == 1 &
+        ##Adding secondary criteria
+        ##If there is no reason secondary criteria met then include
+        SECL_EXCLU == 0
       ~ 1, 
       TRUE ~ 0
     ),
@@ -916,9 +1354,9 @@ healthyOutcome <- df_criteria %>%
         CRIT_BMI_MUAC == 1 &
         CRIT_HEIGHT == 1 &
         CRIT_SINGLEPREG == 1 &
-        CRIT_LBW == 1 &
-        CRIT_STILLBIRTH == 1 &
-        CRIT_UNPL_CESARIAN == 1 &
+        CRIT_LBW %in% c(1,55) & 
+        CRIT_STILLBIRTH %in% c(1,55) &
+        CRIT_UNPL_CESARIAN %in% c(1,55) &
         CRIT_SMOKE == 1 & 
         CRIT_DRINK %in% c(1,666) &
         CRIT_CHRONIC == 1 &
@@ -927,9 +1365,12 @@ healthyOutcome <- df_criteria %>%
         CRIT_MALARIA == 1 & 
         CRIT_HEPATITISB == 1 & 
         CRIT_HEPATITISC == 1 &
-        (CRIT_IRON == 1) &
-        (CRIT_INFLAM == 1) & 
-        (CRIT_HEMOGLOBINOPATHIES == 1)
+        CRIT_IRON == 1 &
+        CRIT_INFLAM == 1 & 
+        CRIT_HEMOGLOBINOPATHIES == 1 &
+        ##Adding secondary criteria
+        ##If there is no reason secondary criteria met then include
+        SECL_EXCLU == 0
       ~ 1, 
       TRUE ~ 0
     )) %>% 
@@ -962,9 +1403,13 @@ df_healthy_ga <- healthyOutcome %>%
 df_healthy_g6pd <- healthyOutcome %>% 
   filter(HEALTHY_ELIGIBLE_G6PD == 1)
 
+
+
 healthyOutcome_clean <- healthyOutcome %>% 
-  select (SCRNID, MOMID, PREGID, SITE, HEALTHY_ELIGIBLE, HEALTHY_ELIGIBLE_GA, 
-          HEALTHY_COHORT_COMP,HEALTHY_ELIGIBLE_G6PD,starts_with("CRIT", ignore.case= TRUE))
+  select (SCRNID, MOMID, PREGID, SITE, PRIMARY_HEALTHY_ELIGIBLE, PRIMARY_HEALTHY_ELIGIBLE_ALL, 
+          HEALTHY_ELIGIBLE, HEALTHY_ELIGIBLE_GA, 
+          HEALTHY_COHORT_COMP, HEALTHY_ELIGIBLE_G6PD, starts_with("SECL_EXCL", ignore.case= TRUE), 
+          starts_with("CRIT", ignore.case= TRUE))
 
 #for some reason there are Ids (4) which are not in the MAT_ENROLL file. 
 #So, to keep things harmonized, I am modifying this
@@ -1007,17 +1452,16 @@ prep_hb1 <- mnh08_raw %>%
   filter (!is.na(M08_CBC_HB_LBORRES)) %>% #filter where HB is missing
   #remove duplicates if there is any (PJW: changing to duplicates by date, to account for multiple unscheduled visits)
   group_by(SITE, MOMID, PREGID, M08_LBSTDAT) %>% 
-  # group_by(SITE, MOMID, PREGID, M08_TYPE_VISIT) %>% 
   mutate(n = n()) %>% 
   filter(n == 1, M08_TYPE_VISIT %in% c(1:5, 13)) 
-
 
 #long hb data for all data available
 df_hb_long1_all <- healthyOutcome %>%
   select(
     SITE, MOMID, PREGID, PREG_START_DATE, M03_SMOKE_OECOCCUR,
     BOE_GA_DAYS_ENROLL, HEALTHY_ELIGIBLE, HEALTHY_ELIGIBLE_GA,
-    HEALTHY_ELIGIBLE_G6PD, HEALTHY_COHORT_COMP, HEALTHY_CHECK
+    HEALTHY_ELIGIBLE_G6PD, HEALTHY_COHORT_COMP, HEALTHY_CHECK,
+    PRIMARY_HEALTHY_ELIGIBLE, starts_with("SECL_EXCL", ignore.case= TRUE)
   ) %>%
   left_join(prep_hb1, by = c("SITE", "MOMID", "PREGID")) %>%
   mutate(
@@ -1057,6 +1501,10 @@ df_hb_wide1_all <- df_hb_long1_all %>%
     HEALTHY_ELIGIBLE_G6PD = first(HEALTHY_ELIGIBLE_G6PD),
     HEALTHY_COHORT_COMP   = first(HEALTHY_COHORT_COMP),
     HEALTHY_CHECK         = first(HEALTHY_CHECK),
+    PRIMARY_HEALTHY_ELIGIBLE  = first(PRIMARY_HEALTHY_ELIGIBLE),
+    SECL_EXCLU            = first(SECL_EXCLU),
+    SECL_EXCLU_RSN        = first(SECL_EXCLU_RSN),
+    SECL_EXCLU_RSN_LABEL  = first(SECL_EXCLU_RSN_LABEL),
     
     hb_n = sum(!is.na(hb) & !is.na(visit_date)),
     
@@ -1076,22 +1524,23 @@ df_hb_wide1_all <- df_hb_long1_all %>%
     .groups = "drop"
   )
 
+names (df_hb_wide1_all)
 
-#Now keep all data available by if they are healthy cohort (so we do _hc)
+#Now keep all data available by if they are healthy cohort by all 20 criteria (so we do _hc)
 df_hb_wide1_hc <- df_hb_wide1_all %>%
   filter (HEALTHY_ELIGIBLE == 1)
 
 df_hb_long1_hc <- df_hb_long1_all %>%
   filter (HEALTHY_ELIGIBLE == 1)
 
-#Healthy cohort hb with G6PD criteria removed
+#Healthy cohort hb with G6PD criteria and GA is removed
 df_hb_wide1_g6pd <- df_hb_wide1_all %>%
   filter (HEALTHY_ELIGIBLE_G6PD == 1)
 
 df_hb_long1_g6pd <- df_hb_long1_all %>%
   filter (HEALTHY_ELIGIBLE_G6PD == 1)
 
-#With GA removed
+#With only GA removed
 df_hb_wide1_ga <- df_hb_wide1_all %>%
   filter (HEALTHY_ELIGIBLE_GA == 1)
 
@@ -1100,10 +1549,11 @@ df_hb_long1_ga <- df_hb_long1_all %>%
 
 #remove outliers
 df_hb_long1 <- df_hb_long1_g6pd %>% 
-  filter(ga_wks >= 5 & ga_wks < 45) %>%
+  filter(ga_wks >= 5 & ga_wks < 42) %>%
   filter(hb >= 5 & hb <= 18) 
 
-#wide hb data - basically, we want to move away from using type_visit as a way to make our data unique, 
+#wide hb data - basically, we want to move away from using type_visit as a way 
+#to make our data unique, 
 ##so we keep all the hb in an hb-list and count in an hb_n
 df_hb_wide1 <- df_hb_long1 %>%
   group_by(SITE, MOMID, PREGID) %>%
@@ -1116,7 +1566,10 @@ df_hb_wide1 <- df_hb_long1 %>%
     HEALTHY_ELIGIBLE_G6PD = first(HEALTHY_ELIGIBLE_G6PD),
     HEALTHY_COHORT_COMP   = first(HEALTHY_COHORT_COMP),
     HEALTHY_CHECK         = first(HEALTHY_CHECK),
-    
+    PRIMARY_HEALTHY_ELIGIBLE  = first(PRIMARY_HEALTHY_ELIGIBLE),
+    SECL_EXCLU            = first(SECL_EXCLU),
+    SECL_EXCLU_RSN        = first(SECL_EXCLU_RSN),
+    SECL_EXCLU_RSN_LABEL  = first(SECL_EXCLU_RSN_LABEL),
     hb_n = sum(!is.na(hb) & !is.na(visit_date)),
     
     hb_list = {
@@ -1155,13 +1608,19 @@ save(df_hb_wide1, file = "derived_data/df_hb_wide1.rda")
 #*****************************************************************************
 #5. SENSITIVITY ANALYISIS DATA ----
 #*****************************************************************************
+
 #*prepare data
 df_sensitive_long <- df_hb_long1 %>% 
-  left_join(INF_OUTCOMES) 
+  left_join(mat_inf_preterm) 
 #save data
 save(df_sensitive_long, file = "derived_data/df_sensitive_long.rda")
 
 
+#data for secondary exclusion
+df_nearmiss_long <- df_hb_long1 %>% 
+  left_join(mat_near_miss) %>% 
+  mutate (near_miss = case_when(NEAR_MISS == 1 ~ 1, TRUE ~ 0))
+save(df_nearmiss_long, file = "derived_data/df_nearmiss_long.rda")
 
 #*****************************************************************************
 #6. FINAL ELIGIBILITY DATAFRAMES----
@@ -1225,8 +1684,73 @@ save(df_eli_long, file = "derived_data/df_eli_long.rda")
 # table (test$EXPECTED_TYPE_VISIT)
 
 #*****************************************************************************
-#7. Demographic Table Prep----
-#*************************************************s****************************
+#7. Paper ready REMAPP Datasets ----
+#*****************************************************************************
+#This is a dataset for the REMAPP Aim 1 outcome
+#This will keep all criteria outcome variables and inclusion variables
+remapp_df_wide <- healthyOutcome_clean %>%
+  full_join(
+    df_hb_wide1_all %>%
+      select( SITE, MOMID, PREGID,HB_LIST = hb_list, HB_N = hb_n),
+    by = c("SITE", "MOMID", "PREGID"))
+
+write.csv(remapp_df_wide, file = paste0(path_to_tnt, "MAT_REMAPP_AIM1.csv"), row.names = FALSE)
+write.csv(remapp_df_wide, file = paste0("derived_data/MAT_REMAPP_AIM1.csv"),  row.names = FALSE) 
+
+
+
+
+# #This is for if people need to access the long version of the data.
+# #To make this data long, use the code below, since hb is in a list
+# #Hb wide to long Function : Convert Wide HB Summary back to Long Format ----
+# library(dplyr)
+# library(tidyr)
+# library(stringr)
+# library(lubridate)
+# reconstruct_hb_long <- function(wide_df) {
+#   
+#   long_df <- wide_df %>%
+#     # 1. Filter out participants who had no hemoglobin records on file
+#     filter(HB_LIST != "No Hb") %>%
+#     
+#     # 2. Separate the collapsed string into distinct rows per test event
+#     separate_rows(HB_LIST, sep = ";\\s*") %>%
+#     
+#     # 3. Parse out the date, gestational age (weeks), and hb value using regex
+#     # Pattern explanation: 
+#     #   ^([0-9-]+)       -> Group 1: Match Date (YYYY-MM-DD)
+#     #   \\s*\\(([^w]+)w\\):\\s* -> Group 2: Match numeric GA weeks before the 'w'
+#     #   (.*)$            -> Group 3: Match the remaining Hemoglobin value
+#     mutate(
+#       HB_LIST = str_trim(HB_LIST),
+#       HB_DATE      = ymd(str_match(HB_LIST, "^([0-9-]+)")[, 2]),
+#       GA_HB_WKS    = as.numeric(str_match(HB_LIST, "\\(([^w]+)w\\):")[, 2]),
+#       HB           = as.numeric(str_match(HB_LIST, ":\\s*([0-9.]+)$")[, 2])
+#     ) %>%
+#     
+#     # 4. Back-calculate missing metrics using standard protocol calculations
+#     mutate(
+#       GA_HB_DAYS   = round(GA_HB_WKS * 7),
+#       TRIMESTER_HB = case_when(
+#         GA_HB_WKS > 0  & GA_HB_WKS < 14  ~ 1,
+#         GA_HB_WKS >= 14 & GA_HB_WKS < 28  ~ 2,
+#         GA_HB_WKS >= 28 & GA_HB_WKS <= 45 ~ 3,
+#         TRUE                              ~ NA_real_
+#       )
+#     ) %>%
+#     
+#     # 5. Clean up structural tracking columns no longer needed in long format
+#     select(-HB_LIST, -HB_N)
+#   
+#   return(long_df)
+# }
+# 
+# # EXAMPLE USAGE
+# remapp_df_long <- reconstruct_hb_long(remapp_df_wide)
+
+#*****************************************************************************
+#8. Demographic Table Prep----
+#*****************************************************************************
 
 if (file.exists("derived_data/inf_perinatal_df.rda")) {
   load("derived_data/inf_perinatal_df.rda") 
