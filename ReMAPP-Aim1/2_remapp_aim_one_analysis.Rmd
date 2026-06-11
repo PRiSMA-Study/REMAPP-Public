@@ -25,7 +25,7 @@ editor_options:
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE) 
 knitr::opts_chunk$set(fig.align = "center")
 
-rm(list = ls())
+#rm(list = ls())
 
 
 library(tidyverse)
@@ -60,8 +60,12 @@ load("derived_data/df_hb_wide1_hc.rda")
 load("derived_data/df_hb_long1.rda")
 load("derived_data/df_hb_wide1.rda")
 
+load("derived_data/df_sec_excl_long.rda")
+
 #include outcome var for df_hb_long1
 load("derived_data/df_sensitive_long.rda")
+load("derived_data/df_nearmiss_long.rda")
+
 #long data for criteria eligibility figure
 load("derived_data/df_eli_long.rda")
 load("derived_data/all_screen.rda")
@@ -70,35 +74,35 @@ load("derived_data/inf_perinatal_df.rda")
 
 load("derived_data/df_criteria.rda")
 
-#test table format 1
-#pvalue format
-p_val_format <- function(x){
-  z <- scales::pvalue_format()(x)
-  z[!is.finite(x)] <- ""
-  z
-}
+#PJW: 5/20/2026 - Commented out because functions not in use
+# #test table format 1
+# #pvalue format
+# p_val_format <- function(x){
+#   z <- scales::pvalue_format()(x)
+#   z[!is.finite(x)] <- ""
+#   z
+# }
+# 
+# #table format
+# tb_flextable <- function(data, caption, seq_id, bkm) { 
+#   tb <- qflextable(data)
+#   tb <- set_table_properties(
+#     tb, width = 0.8, layout = "autofit",
+#     opts_pdf = list(tabcolsep = 3)) 
+#   tb <- set_caption(tb,
+#     caption = as_paragraph(
+# as_chunk(caption, props = fp_text_default(font.family = "Arial"))
+# ),
+#     word_stylename = "Table Caption",
+#     autonum = run_autonum(seq_id = seq_id, bkm = bkm)
+#   )
+#   tb <- bold(tb, bold = FALSE, part = "header")
+#   tb <- set_formatter(tb, values = list(
+#     "p.value" = p_val_format))
+#   tb
+# }
 
 
-
-
-#table format
-tb_flextable <- function(data, caption, seq_id, bkm) { 
-  tb <- qflextable(data)
-  tb <- set_table_properties(
-    tb, width = 0.8, layout = "autofit",
-    opts_pdf = list(tabcolsep = 3)) 
-  tb <- set_caption(tb,
-    caption = as_paragraph(
-as_chunk(caption, props = fp_text_default(font.family = "Arial"))
-),
-    word_stylename = "Table Caption",
-    autonum = run_autonum(seq_id = seq_id, bkm = bkm)
-  )
-  tb <- bold(tb, bold = FALSE, part = "header")
-  tb <- set_formatter(tb, values = list(
-    "p.value" = p_val_format))
-  tb
-}
 #table format for summary table by site
 tb_theme2 <- function(matrix){
   tb <- matrix %>% 
@@ -358,19 +362,18 @@ healthy_by_site <- healthyOutcome %>%
   group_by(SITE) %>%
   summarise(
     "Enrolled in PRISMA MNH since ReMAPP launch, N" = as.character(n()),
+    
+    # All criteria applied (GA + G6PD applied)
+    "Eligible for healthy cohort (GA + G6PD excluded), n (%)" =
+      fmt_np(PRIMARY_HEALTHY_ELIGIBLE),
 
     # All criteria applied (GA + G6PD applied)
     "Eligible for healthy cohort (all criteria applied), n (%)" =
-      fmt_np(HEALTHY_ELIGIBLE),
+      fmt_np(PRIMARY_HEALTHY_ELIGIBLE_ALL),
 
-    # GA removed (still excludes G6PD)
-    "Eligible for healthy cohort (GA criterion not applied), n (%)" =
-      fmt_np(HEALTHY_ELIGIBLE_GA),
-
-    # GA + G6PD removed (analysis cohort)
-    "Eligible for healthy cohort (GA and G6PD criteria not applied), n (%)" =
+    # excluding infections 
+    "Healthy cohort excl. incident infections, n (%)" =
       fmt_np(HEALTHY_ELIGIBLE_G6PD),
-
     .groups = "drop"
   )
 
@@ -378,11 +381,14 @@ healthy_total <- healthyOutcome %>%
   summarise(
     SITE = "Total",
     "Enrolled in PRISMA MNH since ReMAPP launch, N" = as.character(n()),
+    # All criteria applied (GA + G6PD applied)
+    "Eligible for healthy cohort (GA + G6PD excluded), n (%)" =
+      fmt_np(PRIMARY_HEALTHY_ELIGIBLE),
+    # All criteria applied (GA + G6PD applied)
     "Eligible for healthy cohort (all criteria applied), n (%)" =
-      fmt_np(HEALTHY_ELIGIBLE),
-    "Eligible for healthy cohort (GA criterion not applied), n (%)" =
-      fmt_np(HEALTHY_ELIGIBLE_GA),
-    "Eligible for healthy cohort (GA and G6PD criteria not applied), n (%)" =
+      fmt_np(PRIMARY_HEALTHY_ELIGIBLE_ALL),
+    # excluding infections 
+    "Healthy cohort excl. incident infections, n (%)" =
       fmt_np(HEALTHY_ELIGIBLE_G6PD)
   )
 
@@ -393,9 +399,9 @@ healthy_n <- bind_rows(healthy_by_site, healthy_total) %>%
     Measure,
     c(
       "Enrolled in PRISMA MNH since ReMAPP launch, N",
+      "Eligible for healthy cohort (GA + G6PD excluded), n (%)",
       "Eligible for healthy cohort (all criteria applied), n (%)",
-      "Eligible for healthy cohort (GA criterion not applied), n (%)",
-      "Eligible for healthy cohort (GA and G6PD criteria not applied), n (%)"
+      "Healthy cohort excl. incident infections, n (%)"
     )
   ))
 
@@ -438,21 +444,20 @@ size_hb <- df_hb_long1_g6pd %>%
 tb_data <- healthy_n %>%
   bind_rows(healthy_hb_no_outlier) %>%
   bind_rows(size_hb)
-
-
+      
 # Your desired paper-style row labels (these MUST match the stub exactly)
-row_all        <- "Eligible for healthy cohort (all eligibility criteria applied)†, n (%)"
-row_noga       <- "Eligible for healthy cohort (gestational age criterion not applied)‡, n (%)"
-row_noga_g6pd  <- "Eligible for healthy cohort (gestational age and G6PD criteria not applied)§, n (%)"
+row_hc_gapd        <- "Eligible for healthy cohort (GA + G6PD excluded)†, n (%)"
+row_hc_all      <- "Eligible for healthy cohort (all criteria applied)‡, n (%)"
+row_hc_fpr  <- "Healthy cohort excl. incident infections§, n (%)"
 
 # 1) Rename Measure values so the stub contains EXACTLY those strings
 tb_data_fixed <- tb_data %>%
   mutate(
     Measure = dplyr::case_when(
       # update these left-hand strings to match what your healthy_n currently produces
-      Measure == "Eligible for healthy cohort (all criteria applied), n (%)" ~ row_all,
-      Measure == "Eligible for healthy cohort (GA criterion not applied), n (%)" ~ row_noga,
-      Measure == "Eligible for healthy cohort (GA and G6PD criteria not applied), n (%)" ~ row_noga_g6pd,
+      Measure == "Eligible for healthy cohort (GA + G6PD excluded), n (%)" ~ row_hc_gapd,
+      Measure == "Eligible for healthy cohort (all criteria applied), n (%)" ~ row_hc_all,
+      Measure == "Healthy cohort excl. incident infections, n (%)" ~ row_hc_fpr,
       TRUE ~ as.character(Measure)
     )
   )
@@ -469,19 +474,19 @@ tb1 <- tb_theme2(tb_data2) %>%
   ) %>%
 
   tab_footnote(
-    footnote = "†All eligibility criteria were applied, including gestational age and exclusion of participants with G6PD deficiency.",
-    locations = cells_stub(rows = row_all)
+    footnote = "†Primary exclusion criteria for the healthy cohort was applied with the exception of gestational age and G6PD criteria.",
+    locations = cells_stub(rows = row_hc_gapd)
   ) %>%
   tab_footnote(
-    footnote = "‡The gestational age eligibility criterion was not applied due to low first-trimester enrollment.",
-    locations = cells_stub(rows = row_noga)
+    footnote = "‡All 20 healthy cohort eligibility criteria were applied, including gestational age and exclusion of participants with G6PD deficiency.",
+    locations = cells_stub(rows = row_hc_all)
   ) %>%
   tab_footnote(
-    footnote = "§Participants with G6PD deficiency were included because current evidence is limited that G6PD status is an indicator of a healthy pregnancy or meaningfully related to anemia definition/deficiency in this cohort.",
-    locations = cells_stub(rows = row_noga_g6pd)
+    footnote = "§Participants with incident infection during pregnancy, including malaria RDT positivity, HIV, hepatitis B, or hepatitis C, were excluded.",
+    locations = cells_stub(rows = row_hc_fpr)
   ) %>%
   tab_footnote(
-    footnote = "**Outliers removed: gestational age < 5 or > 41 weeks, or hemoglobin < 5 or > 18 g/dL."
+    footnote = "**Outliers removed: gestational age < 5 or > 42 weeks, or hemoglobin < 5 or > 18 g/dL."
   )
 
 tb1 <- tb1 %>%
@@ -723,7 +728,7 @@ knitr::include_graphics("tb1.png")
 
 <!-- #     tab_footnote( -->
 
-<!-- #     footnote = c("**Outliers: GA < 5 or GA < 41 or HB < 5 or HB > 18") -->
+<!-- #     footnote = c("**Outliers: GA < 5 or GA < 42 or HB < 5 or HB > 18") -->
 
 <!-- #   ) %>% -->
 
@@ -782,7 +787,7 @@ determination.
    mutate(
      # Create a single primary exclusion reason column
      primary_exclusion = case_when(
-       HEALTHY_ELIGIBLE_G6PD == 1 & SCREEN_PASS == "Yes" & ENROLL_NO_ISSUES == 1 ~ "eligible",
+       PRIMARY_HEALTHY_ELIGIBLE == 1 & SCREEN_PASS == "Yes" & PRISMA_ENROLL == 1 ~ "eligible",
        CRIT_INFLAM %in% c(0,55)  ~ "inflammation",
        CRIT_IRON %in% c(0,55)  ~ "inadequate iron",
        CRIT_BMI_MUAC  %in% c(0,55) ~ "bmi and muac not met",
@@ -809,10 +814,12 @@ determination.
             TRUE ~ PRESCREEN_PASS))
  
   exclusion_counts <- all_screen_df %>%
-    filter(HEALTHY_ELIGIBLE_G6PD == 0 & ENROLL_NO_ISSUES == 1 & SCREEN_PASS == "Yes") %>%
+    filter(PRIMARY_HEALTHY_ELIGIBLE == 0 & PRISMA_ENROLL == 1 & SCREEN_PASS == "Yes") %>%
     ungroup()  %>%
     count(primary_exclusion, name = "count") %>%
     arrange(desc(count))
+  
+  print (exclusion_counts)
   
   non_valid_hb <- df_hb_long1_g6pd %>%
     filter(ga_wks < 5 | hb < 5 | hb > 18) %>%
@@ -867,6 +874,21 @@ step2_exc_lines <- step2_df %>%
 
 print(step2_exc_lines)
 
+
+## 3: Further exclusions exclusions ----
+step4_df <- all_screen_df %>%
+  # keep only rows that have a screening exclusion
+  filter(PRIMARY_HEALTHY_ELIGIBLE == 1 & SECL_EXCLU == 1 & HEALTHY_ELIGIBLE_G6PD == 0) %>%   # drop those who passed screening
+  count(reason = SECL_EXCLU_RSN_LABEL, name = "n")
+
+step4_exc_lines <- step4_df %>%
+  filter(n > 0) %>%
+  arrange(desc(n)) %>%
+  mutate(line = paste0(n, " ", reason)) %>%
+  pull(line)
+
+print(step4_exc_lines)
+
 #Step 3 
 # Create the flowchart with clean number-reason format
 flow <- all_screen_df %>%
@@ -905,7 +927,7 @@ flow <- all_screen_df %>%
   
   # Screening step
   fc_filter(
-    SCREEN_PASS == "Yes" & PRESCREEN_PASS == "Yes" & ENROLL_NO_ISSUES == 1,
+    SCREEN_PASS == "Yes" & PRESCREEN_PASS == "Yes" & PRISMA_ENROLL == 1,
     label = "Enrolled in the ReMAPP Study",
     show_exc = TRUE,
     text_fs_exc = 9,
@@ -927,8 +949,8 @@ flow <- all_screen_df %>%
     )
   ) %>%
   fc_filter(
-    HEALTHY_ELIGIBLE_G6PD == 1 & ENROLL_NO_ISSUES == 1,
-    label = "Women included in the Healthy Cohort",
+    PRIMARY_HEALTHY_ELIGIBLE == 1 & PRISMA_ENROLL == 1,
+    label = "Women who met the healthy cohort criteria",
     text_pattern = "{label}\n n={n}",
     text_color = "black",
     bg_fill = "#ebfcf9",
@@ -946,7 +968,30 @@ flow <- all_screen_df %>%
       "Excluded from healthy cohort:\n",
       paste(exclusion_counts$count, exclusion_counts$primary_exclusion, collapse = "\n")
     )
-  ) #%>%
+  ) %>%
+  fc_filter(
+    HEALTHY_ELIGIBLE_G6PD == 1 & PRISMA_ENROLL == 1 & SECL_EXCLU == 0,
+    label = paste0(
+      "Women included in FPR analysis with at least\none valid hb value\n"),
+    text_pattern = "{label} n={n} \n (Total hemoglobin \n measurements=  {total_hb_measurements}) ",
+    text_color = "black",
+    bg_fill = "#ebfcf9",
+    border_color = "#016795",
+    text_color_exc = "black",
+    bg_fill_exc = "#f2fafa",
+    border_color_exc = "#9edee0",
+    text_pattern_exc = "{label}\n n={n}",
+    just_exc = "left",
+    text_fs_exc = 9,
+    text_fs = 10,
+    show_exc = TRUE,
+    offset_exc = 0.08,
+    label_exc        = paste(
+      "Excluded incident infection:",
+      paste(step4_exc_lines, collapse = "\n"),
+      sep = "\n"
+    )
+  ) 
   
   # fc_filter(
   #   HEALTHY_ELIGIBLE == 1 & HB_DATA == "Yes" & HB_VALID_DATA == "Yes",
@@ -1019,8 +1064,8 @@ hb_valid_data <- df_hb_wide1 %>% filter (!is.na(PREG_START_DATE)) %>%
    select (MOMID, PREGID, SITE, HB_VALID_DATA)
  
 REMAPP <- all_screen %>% 
-  select(SITE, MOMID, PREGID, SCREEN_PASS, ENROLL_NO_ISSUES, HEALTHY_ELIGIBLE_G6PD)  %>%
-  filter(SCREEN_PASS == "Yes" & ENROLL_NO_ISSUES == 1) %>%
+  select(SITE, MOMID, PREGID, SCREEN_PASS, PRISMA_ENROLL, HEALTHY_ELIGIBLE_G6PD)  %>%
+  filter(SCREEN_PASS == "Yes" & PRISMA_ENROLL == 1) %>%
   select(MOMID, PREGID, SITE, HEALTHY_ELIGIBLE_G6PD) %>%
   distinct(PREGID, SITE, .keep_all = TRUE) %>% 
   left_join(hb_data, by = c("MOMID","PREGID","SITE")) %>% 
@@ -2074,6 +2119,11 @@ hc_anemia_who_disp <- hc_anemia_who %>%
     `Mild anemia`              = `Mild Anemia Threshold`,
     `Moderate anemia`          = `Moderate Anemia Threshold`,
     `Severe anemia`            = `Severe Anemia Threshold`
+  ) %>%
+  dplyr::left_join(
+    hb_summary_median_disp %>%
+      dplyr::select(`Time period`, `GA weeks`, `95th centile (g/dL)`),
+    by = c("Time period", "GA weeks")
   )
 
 tb_cent_who <- tb_theme3(hc_anemia_who_disp) %>%
@@ -2574,7 +2624,7 @@ knitr::include_graphics("tb_all_hc_sens.png")
 
 \newpage
 
-### Excluding the subgroup of subjects with adverse oucomes.
+### Excluding the subgroup of subjects with adverse oucomes - preterm delivery
 
 In order to see if participants with adverse outcome has different
 hemoglobin distribution, we will compare sample under each subsample
@@ -2589,7 +2639,7 @@ discuss more subgroups.
 cents <- c(5, 50, 95)
 
 ## a function to plot centile curves after excluding certain site
-fpr_mod_sensitive_fun <- function(data, model, s){
+fpr_mod_sensitive_fun <- function(data, model, s, label){
   # remove the selected group data
   dat <- data %>% filter(eval(parse(text = paste0(s,"!= 1"))))
   # fit a FPR model on the rest data
@@ -2612,7 +2662,7 @@ fpr_mod_sensitive_fun <- function(data, model, s){
        ylim = c(5, 18),
        type="n",
        xlab = "Gestational week", ylab = "Hemoglobin (g/dL)",
-       main = paste0("Excluding ", s))
+       main = paste0("Excluding ", label))
 
   for(i in 2:(length(cents)+1)) {
     lines(y_fpr_mod[,1], y_fpr_mod[,i], col = "black", lty = "longdash")
@@ -2620,7 +2670,40 @@ fpr_mod_sensitive_fun <- function(data, model, s){
   }
 }
 
-fpr_mod_sensitive_pooled <- fpr_mod_sensitive_fun(df_fpr, fpr_mod_pooled, "preterm37_mom")
+fpr_mod_sensitive_pooled <- fpr_mod_sensitive_fun(df_fpr, fpr_mod_pooled, "preterm37_mom", "preterm birth <37weeks")
+
+newpar <- par(mfrow = c(1,1), mar = par("mar") + c(0, 1, 0, 0),
+              col.axis = "blue4", col = "blue4", col.main = "blue4",
+              col.lab = "blue4", pch = "+", cex = 0.45, cex.lab = 2,
+              cex.axis = 2, cex.main = 2)
+par(newpar)
+```
+
+Check whether the centile plots are sensitive to removing the group with
+preterm delivery.
+
+\newpage
+
+### Exclusion of participants with severe maternal morbidity 
+
+To assess whether participants with severe maternal morbidity have a different hemoglobin distribution, we compared hemoglobin centile curves in subsamples excluding these participants (red line) with those from the full enrolled cohort (black line).
+
+Sensitivity analysis excluding severe maternal morbidities including severe preeclampsia, severe postpartum hemorrhage, organ failure, or ICU admission
+
+```{r , results='hide', fig.align='center', out.width='60%'}
+# centiles
+cents <- c(5, 50, 95)
+
+df_fpr_sev <- df_nearmiss_long %>% 
+dplyr :: select(SITE, ga_wks, hb, near_miss) %>% 
+  mutate(nearmiss = ifelse(!is.na(near_miss), near_miss, 55)) %>%
+  filter(!is.na(hb) & !is.na(ga_wks)) %>% 
+  mutate(range = (max(ga_wks) - min(ga_wks)))
+
+
+## a function to plot centile curves after excluding certain site
+
+fpr_mod_mat_sensitive_pooled <- fpr_mod_sensitive_fun(df_fpr_sev, fpr_mod_pooled, "nearmiss","severe maternal morbidities")
 
 newpar <- par(mfrow = c(1,1), mar = par("mar") + c(0, 1, 0, 0),
               col.axis = "blue4", col = "blue4", col.main = "blue4",
