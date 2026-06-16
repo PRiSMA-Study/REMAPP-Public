@@ -1160,7 +1160,8 @@ df_inf_analysis <- df_inf_mlist
 #*****************************************************************************
 #1.5 A. Maternal Denominators ----
 #*****************************************************************************
-#After enrolment, we want to determine the number of women, who had at least one visit
+##MNH04 maternal visit summary ----
+##After enrolment, we want to determine the number of women, who had at least one visit
 mnh04_sub <- mnh04 %>%
   mutate(
     M04_ANC_OBSSTDAT = clean_date(M04_ANC_OBSSTDAT)
@@ -1170,10 +1171,13 @@ mnh04_sub <- mnh04 %>%
   filter(M04_MAT_VISIT_MNH04 %in% c(1, 2)) %>%
   # keep mom alive
   filter(M04_MAT_VITAL_MNH04 == 1)  %>%
+  # keep only continued viable pregnancies! 
+  filter (M04_PRG_DSDECOD == 1) %>%
   #remove duplicate visit dates
   arrange(SITE, MOMID, PREGID, M04_ANC_OBSSTDAT, desc(M04_TYPE_VISIT)) %>%
   distinct(SITE, MOMID, PREGID, M04_ANC_OBSSTDAT, .keep_all = TRUE) 
 
+###last viable ANC visit ----
 last_viable_df <- mnh04_sub %>%
   group_by(SITE, MOMID, PREGID) %>%
   mutate(
@@ -1197,11 +1201,84 @@ last_viable_df <- mnh04_sub %>%
     ANALYSIS_DENOM_A = 1
   )
 
-#group infant outcome by mom, to see how many moms have 
+##MNH06 postpartum visit summary ----
+#After birth, we want to determine the number of women, who had at least one pp visit
+mnh06_visit_sub <- raw_mnh06 %>%
+  ungroup() %>%
+  select(
+    SITE, MOMID, PREGID, M06_DIAG_VSDAT, M06_TYPE_VISIT,
+    M06_MAT_VISIT_MNH06, M06_MAT_VITAL_MNH06
+  ) %>%
+  mutate(
+    M06_DIAG_VSDAT = clean_date(M06_DIAG_VSDAT)
+  ) %>%
+  filter(M06_TYPE_VISIT %in% c(7:12, 14)) %>%
+  # remove not-complete visits
+  filter(M06_MAT_VISIT_MNH06 %in% c(1, 2)) %>%
+  # keep mom alive
+  filter(M06_MAT_VITAL_MNH06 %in% c(1, 99)) %>%
+  # remove duplicate visit dates
+  arrange(SITE, MOMID, PREGID, M06_DIAG_VSDAT, desc(M06_TYPE_VISIT)) %>%
+  distinct(SITE, MOMID, PREGID, M06_DIAG_VSDAT, .keep_all = TRUE)
+
+###last seen pp windows ----
+pp_visit_windows <- mnh06_visit_sub %>%
+  filter (PREGID %in% df_maternal$PREGID) %>%
+  left_join(
+    MAT_ENDPOINTS,
+    select(SITE, MOMID, PREGID, PREG_END_DATE),
+    by = c("SITE", "MOMID", "PREGID")
+  ) %>%
+  mutate(
+    PREG_END_DATE = clean_date(PREG_END_DATE),
+    PP_AGE_DAYS = as.numeric(M06_DIAG_VSDAT - PREG_END_DATE)
+  ) %>%
+  group_by(SITE, MOMID, PREGID) %>%
+  summarise(
+    # last observed maternal postpartum visit
+    LAST_SEEN_PP_DATE = max(M06_DIAG_VSDAT, na.rm = TRUE),
+    
+    # infant age at last observed maternal postpartum visit (safe max)
+    LAST_SEEN_PP_AGE_DAYS = if (all(is.na(PP_AGE_DAYS))) NA_real_
+    else max(PP_AGE_DAYS, na.rm = TRUE),
+    
+    # 6-week visit window (42-104 days)
+    HAD_6WK_VISIT = any(
+      between(PP_AGE_DAYS, 42, 104),
+      na.rm = TRUE
+    ),
+    SEEN_AFTER_6WK = any(
+      PP_AGE_DAYS > 104,
+      na.rm = TRUE
+    ),
+    SIXWK_STATUS = case_when(
+      HAD_6WK_VISIT ~ 1,                 # 1 - had a 6-week visit
+      SEEN_AFTER_6WK ~ 2,               # 2 - missed 6-week visit but seen later
+      TRUE ~ 3                          # 3 - never seen after 6-week window
+    ),
+    # 6-month visit window (182-279 days)
+    HAD_6MO_VISIT = any(
+      between(PP_AGE_DAYS, 182, 279),
+      na.rm = TRUE
+    ),
+    SEEN_AFTER_6MO = any(
+      PP_AGE_DAYS > 279,
+      na.rm = TRUE
+    ),
+    SIXMO_STATUS = case_when(
+      HAD_6MO_VISIT ~ 1,                # had a 6-month visit
+      SEEN_AFTER_6MO ~ 2,               # missed 6-month visit but seen later
+      TRUE ~ 3                          # never seen after 6-month window
+    ),
+    .groups = "drop"
+  )
+
+##Infant outcome summary (by mom/pregnancy) ----
+#group infant outcome by mom, to see how many moms have
 mat_inf_outcome <- INF_OUTCOMES %>%
   select(
     SITE, MOMID, PREGID, INFANTID,
-    LIVEBIRTH,
+    LIVEBIRTH, DOB,
     BIRTH_OUTCOME_REPORTED,
     STILLBIRTH_20WK,
     STILLBIRTH_28WK,
@@ -1209,210 +1286,239 @@ mat_inf_outcome <- INF_OUTCOMES %>%
     MISSING_MNH09,
     MISSING_MNH11,
     DTH_TIME_MISSING,
-    DOB_AFTER_DEATH,
+    DOB_AFTER_DEATH
   ) %>%
   group_by(SITE, MOMID, PREGID) %>%
   summarise(
+    # number of infants in pregnancy
     N_INFANTS = n_distinct(INFANTID),
-    
+    # livebirth count
     N_LIVEBIRTH = sum(LIVEBIRTH == 1, na.rm = TRUE),
-    
-    N_STILLBIRTH_20WK = sum(
-      STILLBIRTH_DENOM == 1 & STILLBIRTH_20WK == 1,
-      na.rm = TRUE
-    ),
-    
-    N_STILLBIRTH_28WK = sum(
-      STILLBIRTH_DENOM == 1 & STILLBIRTH_28WK == 1,
-      na.rm = TRUE
-    ), 
-    N_BIRTH_OUTCOME_REPORTED = sum(
-      BIRTH_OUTCOME_REPORTED == 1,
-      na.rm = TRUE
-    ),
-    # data quality / missingness flags
+    # stillbirth definitions (20wk / 28wk)
+    N_STILLBIRTH_20WK = sum(STILLBIRTH_DENOM == 1 & STILLBIRTH_20WK == 1, na.rm = TRUE),
+    N_STILLBIRTH_28WK = sum(STILLBIRTH_DENOM == 1 & STILLBIRTH_28WK == 1, na.rm = TRUE),
+    # whether birth outcome is recorded
+    N_BIRTH_OUTCOME_REPORTED = sum(BIRTH_OUTCOME_REPORTED == 1, na.rm = TRUE),
+    # DATA QUALITY / MISSINGNESS
     N_MISSING_MNH09 = sum(MISSING_MNH09 == 1, na.rm = TRUE),
     N_MISSING_MNH11 = sum(MISSING_MNH11 == 1, na.rm = TRUE),
     N_DTH_TIME_MISSING = sum(DTH_TIME_MISSING == 1, na.rm = TRUE),
     N_DOB_AFTER_DEATH = sum(DOB_AFTER_DEATH == 1, na.rm = TRUE),
-    
     .groups = "drop"
   )
 
+##Create a masterlist with the variables I need to define denominators
 mat_remapp_denom <- last_viable_df %>%
   right_join(
     MAT_FLOWCHART %>%
       filter(REMAPP_SCRN == 1, ENROLL_NO_ISSUES == 1) %>%
       select(SITE, MOMID, PREGID, CLOSEOUT_GA, PREG_END_ENROLLED, starts_with("ELIGIBLE_")),
-      by = c("SITE", "MOMID", "PREGID")) %>%
+    by = c("SITE", "MOMID", "PREGID")
+  ) %>%
   left_join(MAT_ENDPOINTS, by = c("SITE", "MOMID", "PREGID")) %>%
-  left_join(MAT_ENROLL %>% select(SITE, MOMID, PREGID, PREG_START_DATE),
-      by = c("SITE", "MOMID", "PREGID")) %>%
+  left_join(
+    MAT_ENROLL %>% select(SITE, MOMID, PREGID, PREG_START_DATE),
+    by = c("SITE", "MOMID", "PREGID")
+  ) %>%
   left_join(mat_inf_outcome, by = c("SITE", "MOMID", "PREGID")) %>%
-##Denominator A - Enrolled + One Visit ----
-  mutate (ONE_VISIT_DENOM = 
-            case_when(N_VISITS_AFTER_ENROLL >= 1 ~ 1, #included
-                      ELIGIBLE_EXCL_REASON == 1  ~ 2, #mat death
-                      ELIGIBLE_EXCL_REASON %in% c(2,4,5) ~ 3, #loss to followup
-                      ELIGIBLE_EXCL_REASON == 3 ~ 4, #withdrew from study
-                      is.na(N_VISITS_AFTER_ENROLL) ~ 5, #no visit after enrolment/recode to ltfu after dataclose - PJW Todo
-                      TRUE ~ 55),
-          DENOM_A_INCLUDED   = if_else(ONE_VISIT_DENOM == 1, 1, 0),
-          DENOM_A_EXCL_CODE  = if_else(ONE_VISIT_DENOM == 1, NA_real_, as.numeric(ONE_VISIT_DENOM)),
-          DENOM_A_EXCL_LABEL = case_when(
-            ONE_VISIT_DENOM == 1 ~ "Included: Enrolled + ≥1 visit after enrollment",
-            ONE_VISIT_DENOM == 2 ~ "Maternal death",
-            ONE_VISIT_DENOM == 3 ~ "Loss to follow-up",
-            ONE_VISIT_DENOM == 4 ~ "Withdrew from study",
-            ONE_VISIT_DENOM == 5 ~ "Loss to follow-up",
-            TRUE                 ~ "Other unspecified reasons"
-          ),
-          
-          GA_AT_LAST_VISIT = as.numeric(difftime(
-              ymd(LAST_VIABLE_VISITDATE),
-              ymd(PREG_START_DATE),
-              units = "days")),
-          FOLLOWUP_END_DATE = ymd(UploadDate), #change to when consortium decides is the site closeout
-          AGE_INF_TODAY = as.numeric(difftime(
-            ymd(FOLLOWUP_END_DATE),
-            ymd(PREG_END_DATE),
-            units = "days")),
-          
- ##Denominator B - Enrolled + One Visit + G A20 Met ----          
-          ONE_VISIT_DENOM_20 =  
-            case_when(N_VISITS_AFTER_ENROLL >= 1 & 
-                      (GA_AT_LAST_VISIT >= 140 |PREG_END_GA >= 140) ~ 1, #included 
-                      ONE_VISIT_DENOM %in% c(2:5) ~ 77, #We already know they got kicked out
-                      N_VISITS_AFTER_ENROLL >= 1 & PREG_END_GA < 140 ~ 6, #not included if preg end date <20weeks GA
-                      N_VISITS_AFTER_ENROLL >= 1 & GA_AT_LAST_VISIT < 140 ~ 7, #not included if last visit seen <20weeks GA
-                      TRUE ~ 55),
-         DENOM_B_INCLUDED   = if_else(ONE_VISIT_DENOM_20 == 1, 1, 0),
-         DENOM_B_EXCL_CODE  = if_else(ONE_VISIT_DENOM_20 == 1, NA_real_, as.numeric(ONE_VISIT_DENOM_20)),
-         DENOM_B_EXCL_LABEL = case_when(
-           ONE_VISIT_DENOM_20 == 1  ~ "Included: Enrolled + ≥1 visit + reached ≥20 weeks gestation (GA)",
-           ONE_VISIT_DENOM_20 == 6  ~ "Pregnancy ended <20 weeks GA",
-           ONE_VISIT_DENOM_20 == 7  ~ "Lost to follow-up",
-           ONE_VISIT_DENOM_20 == 77 ~ "Not Applicable",
-           TRUE                     ~ "Other unspecified reasons"
-         ),
- ##Denominator C - Any Pregnancy End (including death) + After GA20 Met ----
-          PREG_END_DENOM_20 = 
-            case_when(N_VISITS_AFTER_ENROLL >= 1 & 
-                      PREG_END == 1 & PREG_END_GA >= 140 ~ 1, #included
-                      ONE_VISIT_DENOM_20 %in% c(2:7,77) ~ 77, #We already know they got kicked out
-                      ELIGIBLE_EXCL_REASON %in% c(2,4,5) ~ 3, #loss to followup
-                      ELIGIBLE_EXCL_REASON == 3 ~ 4, #withdrew from study
-                      TRUE ~ 55),
- 
-         DENOM_C_INCLUDED   = if_else(PREG_END_DENOM_20 == 1, 1, 0),
-         DENOM_C_EXCL_CODE  = if_else(PREG_END_DENOM_20 == 1, NA_real_, as.numeric(PREG_END_DENOM_20)),
-         DENOM_C_EXCL_LABEL = case_when(
-           PREG_END_DENOM_20 == 1  ~ "Included: Pregnancy endpoint recorded AND reached ≥20 weeks GA",
-           PREG_END_DENOM_20 == 3  ~ "Loss to follow-up",
-           PREG_END_DENOM_20 == 4  ~ "Withdrew from study",
-           PREG_END_DENOM_20 == 77 ~ "Not Applicable",
-           TRUE                    ~ "Other unspecified reasons"
-         ),
- ##Denominator C.2 - Participants with birthoutcome reported + After GA20 Met ----
- #why am i ordering the 1-7 reasons differently, because of the flowchart or how they get taken out
- BIRTHOUT_DENOM_20 = 
-   case_when(N_VISITS_AFTER_ENROLL >= 1 & 
-             PREG_END == 1 & PREG_END_GA >= 140 & N_BIRTH_OUTCOME_REPORTED >= 1 ~ 1, #included
-             ONE_VISIT_DENOM_20 %in% c(2:7,77) ~ 77, #We already know they got kicked out
-             N_MISSING_MNH09 >= 1 | N_MISSING_MNH11 >= 1 ~ 5,
-             N_DTH_TIME_MISSING >= 1 | N_DOB_AFTER_DEATH >= 1 ~ 6,
-             ELIGIBLE_EXCL_REASON == 1  ~ 2, #mat death
-             ELIGIBLE_EXCL_REASON %in% c(2,4,5) ~ 3, #loss to followup
-             ELIGIBLE_EXCL_REASON == 3 ~ 4, #withdrew from study
-             is.na (PREG_END_GA) ~ 7, #preg end GA is unknown (closeout issues or date issues)
-             is.na (N_BIRTH_OUTCOME_REPORTED) |  N_BIRTH_OUTCOME_REPORTED == 0 ~ 8,
-             TRUE ~ 55),
- ##Denominator D - Participants with birthoutcome reported + have reached 42days PP ----
- #why am i ordering the 1-7 reasons differently, because of the flowchart or how they get taken out
- POSTPARTUM_DENOM_6 = 
-   case_when(PREG_END_DENOM_20 == 1 & 
-             AGE_INF_TODAY >= 42 &  
-               (MAT_DEATH != 1 | is.na(MAT_DEATH_INFAGE) |  # no maternal death
-                MAT_DEATH_INFAGE > 42 )  ~ 1, #included if she didn't die before 42days
-             
-             PREG_END_DENOM_20 %in% c(2:7,55,77) ~ 77, #We already know they got kicked out
-             MAT_DEATH == 1 ~ 2, #mat death
-             CLOSEOUT_TYPE == 4 ~ 4, #withdrew from study
-             CLOSEOUT_TYPE %in% c(1,5, 6, 77) ~ 3, #loss to followup
-             CLOSEOUT_TYPE %in% c(2) ~ 5, #followup complete
-             AGE_INF_TODAY < 42 ~ 7, #infants at the time of followup had not passed earliest date for 6months visit (recode to ltfu)
-             is.na (N_BIRTH_OUTCOME_REPORTED) |  N_BIRTH_OUTCOME_REPORTED == 0 ~ 6, #no infant/baby outcome recorded (possibly induced abortions)
-             TRUE ~ 55),
- 
-             DENOM_D_INCLUDED   = if_else(POSTPARTUM_DENOM_6 == 1, 1, 0),
-             DENOM_D_EXCL_CODE  = if_else(POSTPARTUM_DENOM_6 == 1, NA_real_, as.numeric(POSTPARTUM_DENOM_6)),
-             DENOM_D_EXCL_LABEL = case_when(
-               POSTPARTUM_DENOM_6 == 1  ~ "Included: Reached ≥42 days postpartum and not maternal death before 42 days",
-               POSTPARTUM_DENOM_6 == 2  ~ "Maternal death <6weeks postpartum",
-               POSTPARTUM_DENOM_6 == 3  ~ "Loss to follow-up",
-               POSTPARTUM_DENOM_6 == 4  ~ "Withdrew from study",
-               POSTPARTUM_DENOM_6 == 5  ~ "Loss to follow-up",
-               POSTPARTUM_DENOM_6 == 6  ~ "No birth outcome recorded",
-               POSTPARTUM_DENOM_6 == 7  ~ "<6 weeks by study end",
-               POSTPARTUM_DENOM_6 == 77 ~ "Not Applicable",
-               TRUE                     ~ "Other unspecified reasons"
-             ),
- ##Denominator E - Participants with birthoutcome reported + have reached 182days PP ----
- #why am i ordering the 1-7 reasons differently, because of the flowchart or how they get taken out
- POSTPARTUM_DENOM_26 = 
-   case_when(PREG_END_DENOM_20 == 1 & 
-              (N_LIVEBIRTH >= 1 | N_STILLBIRTH_20WK >= 1) & 
-              AGE_INF_TODAY >= 182 & 
-               (MAT_DEATH != 1 | is.na(MAT_DEATH_INFAGE)  | # no maternal death
-                MAT_DEATH_INFAGE > 182 )  ~ 1, #included if she didn't die before 182days
-              
-              POSTPARTUM_DENOM_6 %in% c(2:7,77,55) ~ 77, #We already know they got kicked out
-               MAT_DEATH == 1 ~ 2, #mat death
-               CLOSEOUT_TYPE == 4 ~ 4, #withdrew from study
-               CLOSEOUT_TYPE %in% c(1,5, 6, 77) ~ 3, #loss to followup
-               CLOSEOUT_TYPE %in% c(2) |  N_LIVEBIRTH < 1 |  is.na (N_LIVEBIRTH) ~ 5, #followup complete if she never had a livebirth but we expected her in 6weeks 
-               AGE_INF_TODAY < 182 ~ 6, #infants at the time of followup had not passed earliest date for 6months visit (recode to ltfu)
-             TRUE ~ 55),
-         
-         DENOM_E_INCLUDED   = if_else(POSTPARTUM_DENOM_26 == 1, 1, 0),
-         DENOM_E_EXCL_CODE  = if_else(POSTPARTUM_DENOM_26 == 1, NA_real_, as.numeric(POSTPARTUM_DENOM_26)),
-         DENOM_E_EXCL_LABEL = case_when(
-           POSTPARTUM_DENOM_26 == 1  ~ "Included: Livebirth or stillbirth ≥20 weeks AND reached ≥182 days postpartum and not maternal death before 182 days",
-           POSTPARTUM_DENOM_26 == 2  ~ "Maternal death <6months postpartum",
-           POSTPARTUM_DENOM_26 == 3  ~ "Loss to follow-up",
-           POSTPARTUM_DENOM_26 == 4  ~ "Withdrew from study",
-           POSTPARTUM_DENOM_26 == 5  ~ "Loss to follow-up",
-           POSTPARTUM_DENOM_26 == 6  ~ "<6 months by study end",
-           POSTPARTUM_DENOM_26 == 77 ~ "Not Applicable",
-           TRUE                      ~ "Other unspecified reasons"
-         ))
-
+  left_join(pp_visit_windows, by = c("SITE", "MOMID", "PREGID")) %>%
+  
+  mutate(
+    ## Denominator A - Enrolled + One Visit ----
+    ONE_VISIT_DENOM = case_when(
+      N_VISITS_AFTER_ENROLL >= 1           ~ 1,  # included
+      ELIGIBLE_EXCL_REASON == 1            ~ 2,  # mat death
+      ELIGIBLE_EXCL_REASON %in% c(2, 4, 5) ~ 3,  # loss to followup
+      ELIGIBLE_EXCL_REASON == 3            ~ 4,  # withdrew from study
+      is.na(N_VISITS_AFTER_ENROLL)         ~ 5,  # no visit after enrolment/recode to ltfu after dataclose - PJW Todo
+      TRUE                                 ~ 55
+    ),
+    
+    DENOM_A_INCLUDED   = if_else(ONE_VISIT_DENOM == 1, 1, 0),
+    DENOM_A_EXCL_CODE  = if_else(ONE_VISIT_DENOM == 1, NA_real_, as.numeric(ONE_VISIT_DENOM)),
+    DENOM_A_EXCL_LABEL = case_when(
+      ONE_VISIT_DENOM == 1 ~ "Included: Enrolled + ≥1 visit after enrollment",
+      ONE_VISIT_DENOM == 2 ~ "Maternal death",
+      ONE_VISIT_DENOM == 3 ~ "Loss to follow-up",
+      ONE_VISIT_DENOM == 4 ~ "Withdrew from study",
+      ONE_VISIT_DENOM == 5 ~ "Loss to follow-up",
+      TRUE                 ~ "Other unspecified reasons"
+    ),
+    
+    GA_AT_LAST_VISIT = as.numeric(difftime(
+      ymd(LAST_VIABLE_VISITDATE),
+      ymd(PREG_START_DATE),
+      units = "days"
+    )),
+    
+    FOLLOWUP_END_DATE = ymd(UploadDate), # change to when consortium decides is the site closeout
+    
+    GA_TODAY = as.numeric(difftime(
+      ymd(FOLLOWUP_END_DATE),
+      ymd(PREG_START_DATE),
+      units = "days"
+    )),
+    
+    AGE_INF_TODAY = as.numeric(difftime(
+      ymd(FOLLOWUP_END_DATE),
+      ymd(PREG_END_DATE),
+      units = "days"
+    )),
+    
+    ## Denominator B - Enrolled + One Visit + GA20 Met ----          
+    ONE_VISIT_DENOM_20 = case_when(
+      N_VISITS_AFTER_ENROLL >= 1 & 
+        ((GA_AT_LAST_VISIT >= 140 & PREG_END_ENROLLED == 0) | # if your pregnancy hasn't ended, we use your GA at last visit
+           PREG_END_GA >= 140)                        ~ 1,  # included 
+      
+      ONE_VISIT_DENOM %in% c(2:5)                  ~ 77, # We already know they got kicked out
+      N_VISITS_AFTER_ENROLL >= 1 & PREG_END_GA < 140  ~ 2,  # not included if preg end date <20weeks GA
+      N_VISITS_AFTER_ENROLL >= 1 & GA_AT_LAST_VISIT < 140 ~ 3,  # not included if last visit seen <20weeks GA
+      TRUE                                         ~ 55
+    ),
+    
+    DENOM_B_INCLUDED   = if_else(ONE_VISIT_DENOM_20 == 1, 1, 0),
+    DENOM_B_EXCL_CODE  = if_else(ONE_VISIT_DENOM_20 == 1, NA_real_, as.numeric(ONE_VISIT_DENOM_20)),
+    DENOM_B_EXCL_LABEL = case_when(
+      ONE_VISIT_DENOM_20 == 1  ~ "Included: Enrolled + ≥1 visit + reached ≥20 weeks gestation (GA)",
+      ONE_VISIT_DENOM_20 == 2  ~ "Pregnancy ended <20 weeks GA",
+      ONE_VISIT_DENOM_20 == 3  ~ "Lost to follow-up",
+      ONE_VISIT_DENOM_20 == 77 ~ "Not Applicable",
+      TRUE                     ~ "Other unspecified reasons"
+    ),
+    
+    ## Denominator C - Any Pregnancy End (including death) + After GA20 Met ----
+    PREG_END_DENOM_20 = case_when(
+      N_VISITS_AFTER_ENROLL >= 1 & PREG_END == 1 & PREG_END_GA >= 140 ~ 1,  # included
+      ONE_VISIT_DENOM_20 %in% c(2:3, 77)                              ~ 77, # We already know they got kicked out
+      
+      ELIGIBLE_EXCL_REASON %in% c(2, 4, 5)                            ~ 3,  # loss to followup
+      ELIGIBLE_EXCL_REASON == 3                                       ~ 4,  # withdrew from study
+      TRUE                                                            ~ 55
+    ),
+    
+    DENOM_C_INCLUDED   = if_else(PREG_END_DENOM_20 == 1, 1, 0),
+    DENOM_C_EXCL_CODE  = if_else(PREG_END_DENOM_20 == 1, NA_real_, as.numeric(PREG_END_DENOM_20)),
+    DENOM_C_EXCL_LABEL = case_when(
+      PREG_END_DENOM_20 == 1  ~ "Included: Pregnancy endpoint recorded AND reached ≥20 weeks GA",
+      PREG_END_DENOM_20 == 3  ~ "Loss to follow-up",
+      PREG_END_DENOM_20 == 4  ~ "Withdrew from study",
+      PREG_END_DENOM_20 == 77 ~ "Not Applicable",
+      TRUE                    ~ "Other unspecified reasons"
+    ),
+    
+    # PJW - Commenting because I no longer need this! Infant outcomes are created and separated
+    # ##Denominator C.2 - Participants with birthoutcome reported + After GA20 Met ----
+    # #why am i ordering the 1-7 reasons differently, because of the flowchart or how they get taken out
+    # BIRTHOUT_DENOM_20 = 
+    #   case_when(N_VISITS_AFTER_ENROLL >= 1 & 
+    #               PREG_END == 1 & PREG_END_GA >= 140 & N_BIRTH_OUTCOME_REPORTED >= 1 ~ 1, #included
+    #               ONE_VISIT_DENOM_20 %in% c(2:7,77) ~ 77, #We already know they got kicked out
+    #               N_MISSING_MNH09 >= 1 | N_MISSING_MNH11 >= 1 ~ 5, #Missing 
+    #               N_DTH_TIME_MISSING >= 1 | N_DOB_AFTER_DEATH >= 1 ~ 6,
+    #               ELIGIBLE_EXCL_REASON == 1  ~ 2, #mat death
+    #               ELIGIBLE_EXCL_REASON %in% c(2,4,5) ~ 3, #loss to followup
+    #               ELIGIBLE_EXCL_REASON == 3 ~ 4, #withdrew from study
+    #               is.na (PREG_END_GA) ~ 7, #preg end GA is unknown (closeout issues or date issues)
+    #               is.na (N_BIRTH_OUTCOME_REPORTED) |  N_BIRTH_OUTCOME_REPORTED == 0 ~ 8,
+    #               TRUE ~ 55),
+    
+    ## Denominator D - Participants with birthoutcome reported + have reached 42days PP ----
+    # why am i ordering the 1-7 reasons differently, because of the flowchart or how they get taken out
+    POSTPARTUM_DENOM_6 = case_when(
+      PREG_END_DENOM_20 == 1 & 
+        AGE_INF_TODAY >= 42 &                        # The age of their infant has to have passed
+        SIXWK_STATUS %in% c(1, 2) &                   # We actually saw them complete a 6weeks visit or saw them later alive
+        (MAT_DEATH != 1 | is.na(MAT_DEATH_INFAGE) |   # no maternal death
+           MAT_DEATH_INFAGE > 42)              ~ 1,  # included if she didn't die before 42days
+      
+      PREG_END_DENOM_20 %in% c(2:7, 55, 77) ~ 77, # We already know they got kicked out
+      MAT_DEATH == 1                        ~ 2,  # mat death
+      CLOSEOUT_TYPE == 4                    ~ 4,  # withdrew from study
+      CLOSEOUT_TYPE %in% c(1, 2, 5, 6, 77)  ~ 3,  # loss to followup; if we expected her to finish a 52weeks visit 
+      # CLOSEOUT_TYPE %in% c(2)               ~ 5,  # followup complete (she closed out and never had a six week visit)
+      AGE_INF_TODAY < 42                    ~ 7,  # infants at the time of followup had not passed earliest date for 6months visit (recode to ltfu)
+      is.na(N_BIRTH_OUTCOME_REPORTED) | N_BIRTH_OUTCOME_REPORTED == 0 ~ 6, # no infant/baby outcome recorded (possibly induced abortions)
+      SIXWK_STATUS == 3 | is.na(SIXWK_STATUS) ~ 3,  # if they didnt withdraw, we just didnt see them and closeout is not complete: LTFU
+      TRUE                                  ~ 55
+    ),
+    
+    DENOM_D_INCLUDED   = if_else(POSTPARTUM_DENOM_6 == 1, 1, 0),
+    DENOM_D_EXCL_CODE  = if_else(POSTPARTUM_DENOM_6 == 1, NA_real_, as.numeric(POSTPARTUM_DENOM_6)),
+    DENOM_D_EXCL_LABEL = case_when(
+      POSTPARTUM_DENOM_6 == 1  ~ "Included: Reached ≥42 days postpartum and not maternal death before 42 days",
+      POSTPARTUM_DENOM_6 == 2  ~ "Maternal death <6weeks postpartum",
+      POSTPARTUM_DENOM_6 == 3  ~ "Loss to follow-up",
+      POSTPARTUM_DENOM_6 == 4  ~ "Withdrew from study",
+      POSTPARTUM_DENOM_6 == 5  ~ "Follow-up complete",
+      POSTPARTUM_DENOM_6 == 6  ~ "No birth outcome recorded",
+      POSTPARTUM_DENOM_6 == 7  ~ "<6 weeks by study end",
+      POSTPARTUM_DENOM_6 == 77 ~ "Not Applicable",
+      TRUE                     ~ "Other unspecified reasons"
+    ),
+    
+    ## Denominator E - Participants with birthoutcome reported + have reached 182days PP ----
+    # why am i ordering the 1-7 reasons differently, because of the flowchart or how they get taken out
+    POSTPARTUM_DENOM_26 = case_when(
+      PREG_END_DENOM_20 == 1 & 
+        (N_LIVEBIRTH >= 1 | N_STILLBIRTH_20WK >= 1 | N_INFANTS >= 1) & 
+        AGE_INF_TODAY >= 182 & 
+        SIXMO_STATUS %in% c(1, 2) &                   # we include them only if we they completed a visit or we saw them later alive
+        (MAT_DEATH != 1 | is.na(MAT_DEATH_INFAGE) |   # no maternal death
+           MAT_DEATH_INFAGE > 182)             ~ 1,  # included if she didn't die before 182days
+      
+      POSTPARTUM_DENOM_6 %in% c(2:7, 77, 55) ~ 77, # We already know they got kicked out
+      MAT_DEATH == 1                         ~ 2,  # mat death
+      CLOSEOUT_TYPE == 4                     ~ 4,  # withdrew from study
+      # basically, if sites put "2" as closeout type for a stillbirth this is LTFU becuase she is supposed to complete all visits
+      CLOSEOUT_TYPE %in% c(1, 2, 5, 6, 77)   ~ 3,  # loss to followup
+      # CLOSEOUT_TYPE %in% c(2) |  N_LIVEBIRTH < 1 |  is.na (N_LIVEBIRTH) ~ 5, #followup complete if she never had a livebirth but we expected her in 6weeks 
+      AGE_INF_TODAY < 182                    ~ 6,  # infants at the time of followup had not passed earliest date for 6months visit (recode to ltfu)
+      SIXMO_STATUS == 3                      ~ 3,  # if they didnt withdraw, we just didnt see them and closeout is not complete: LTFU
+      TRUE                                   ~ 55
+    ),
+    
+    DENOM_E_INCLUDED   = if_else(POSTPARTUM_DENOM_26 == 1, 1, 0),
+    DENOM_E_EXCL_CODE  = if_else(POSTPARTUM_DENOM_26 == 1, NA_real_, as.numeric(POSTPARTUM_DENOM_26)),
+    DENOM_E_EXCL_LABEL = case_when(
+      POSTPARTUM_DENOM_26 == 1  ~ "Included: Livebirth or stillbirth ≥20 weeks AND reached ≥182 days postpartum and not maternal death before 182 days",
+      POSTPARTUM_DENOM_26 == 2  ~ "Maternal death <6months postpartum",
+      POSTPARTUM_DENOM_26 == 3  ~ "Loss to follow-up",
+      POSTPARTUM_DENOM_26 == 4  ~ "Withdrew from study",
+      POSTPARTUM_DENOM_26 == 5  ~ "Follow-up complete",
+      POSTPARTUM_DENOM_26 == 6  ~ "<6 months by study end",
+      POSTPARTUM_DENOM_26 == 77 ~ "Not Applicable",
+      TRUE                      ~ "Other unspecified reasons"
+    )
+  )
 
 # denom_20_miss <- remapp_denom_a %>% filter (ONE_VISIT_DENOM %in% c(1))  
-table (mat_remapp_denom$ONE_VISIT_DENOM)
-table (mat_remapp_denom$ONE_VISIT_DENOM_20)
-table (mat_remapp_denom$PREG_END_DENOM_20)
-table (mat_remapp_denom$BIRTHOUT_DENOM_20)
-table (mat_remapp_denom$POSTPARTUM_DENOM_6)
-table (mat_remapp_denom$POSTPARTUM_DENOM_26)
+table(mat_remapp_denom$ONE_VISIT_DENOM)
+table(mat_remapp_denom$ONE_VISIT_DENOM_20)
+table(mat_remapp_denom$PREG_END_DENOM_20)
+table(mat_remapp_denom$POSTPARTUM_DENOM_6)
+table(mat_remapp_denom$POSTPARTUM_DENOM_26)
 
-mat_remapp_denom_a <- mat_remapp_denom %>% filter (ONE_VISIT_DENOM %in% c(1,2))
-mat_remapp_denom_b <-  mat_remapp_denom %>% filter (ONE_VISIT_DENOM_20 %in% c(1))
-mat_remapp_denom_c <-  mat_remapp_denom %>% filter(PREG_END_DENOM_20 %in% c(1))
-mat_remapp_denom_c2 <-  mat_remapp_denom %>% filter (BIRTHOUT_DENOM_20 %in% c(1))
-mat_remapp_denom_d <-  mat_remapp_denom %>% filter (POSTPARTUM_DENOM_6 %in% c(1))
-mat_remapp_denom_e <-  mat_remapp_denom %>% filter (POSTPARTUM_DENOM_26 %in% c(1))
+mat_remapp_denom_a <- mat_remapp_denom %>% filter(ONE_VISIT_DENOM %in% c(1, 2))
+mat_remapp_denom_b <- mat_remapp_denom %>% filter(ONE_VISIT_DENOM_20 %in% c(1))
+mat_remapp_denom_c <- mat_remapp_denom %>% filter(PREG_END_DENOM_20 %in% c(1))
+mat_remapp_denom_d <- mat_remapp_denom %>% filter(POSTPARTUM_DENOM_6 %in% c(1))
+mat_remapp_denom_e <- mat_remapp_denom %>% filter(POSTPARTUM_DENOM_26 %in% c(1))
+
+#testing the 55s and weird data
+# testing_denom1 <- mat_remapp_denom %>% filter (POSTPARTUM_DENOM_26 == 55)
 
 base_remapp_exlusions <- mat_remapp_denom %>%
   select(
     # Core IDs
     SITE, MOMID, PREGID,
     # Key pregnancy timing
-    PREG_START_DATE, PREG_END_DATE, PREG_END_GA, LAST_VIABLE_VISITDATE,
-    GA_AT_LAST_VISIT, FOLLOWUP_END_DATE, AGE_INF_TODAY,
+    PREG_START_DATE, PREG_END_DATE, PREG_END_GA, LAST_VIABLE_VISITDATE, GA_TODAY,
+    GA_AT_LAST_VISIT, FOLLOWUP_END_DATE, AGE_INF_TODAY, LAST_SEEN_PP_AGE_DAYS,
     # Key counts / endpoints
     N_VISITS_AFTER_ENROLL,PREG_END,N_BIRTH_OUTCOME_REPORTED,
     N_LIVEBIRTH,N_STILLBIRTH_20WK, MAT_DEATH, MAT_DEATH_INFAGE, CLOSEOUT_TYPE,
+    SIXWK_STATUS, SIXMO_STATUS, 
     # Raw denominators (codes)
     ONE_VISIT_DENOM, ONE_VISIT_DENOM_20, PREG_END_DENOM_20,POSTPARTUM_DENOM_6,
     POSTPARTUM_DENOM_26,
@@ -1458,6 +1564,7 @@ mutate (LIVE_STILL_BIRTH28_DENOM =
                     LIVE_STILL_BIRTH_DENOM %in% c(2:5) ~ 77, 
                     GESTAGEBIRTH_ANY_DAYS < 196 ~ 2,  #GA did not reach 28days
                     TRUE ~ 55))  %>%
+
   ##Denominator H - Livebirths ----
 mutate (ALL_LIVEBIRTH_DENOM = 
             case_when(LIVE_STILL_BIRTH_DENOM == 1 & LIVEBIRTH ==1 ~ 1, #included
