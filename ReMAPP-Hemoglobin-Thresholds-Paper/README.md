@@ -14,7 +14,7 @@ The code provided here is a streamlined, paper-specific version of the broader R
 ---
 
 ## Repository structure
-
+```text
 ReMAPP-Hemoglobin-Thresholds-Paper/
 │
 ├── README.md
@@ -25,7 +25,7 @@ ReMAPP-Hemoglobin-Thresholds-Paper/
 └── Decision-Limits/
     ├── code/
     └── iso-code-folder/
-
+```
 ---
 
 # Reference Limits
