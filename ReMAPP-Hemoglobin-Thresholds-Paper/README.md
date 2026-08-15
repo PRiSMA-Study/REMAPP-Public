@@ -9,24 +9,6 @@ The study evaluates maternal hemoglobin (Hb) thresholds during pregnancy using t
 1. **Reference limits** — describing the distribution of hemoglobin across gestation among pregnancies meeting the ReMAPP healthy cohort criteria.
 2. **Decision limits** — evaluating maternal hemoglobin in relation to maternal and infant outcomes.
 
-The code provided here is a streamlined, paper-specific version of the broader ReMAPP Aim 1 and Aim 2 analytical pipelines. 
-
----
-
-## Repository structure
-```text
-ReMAPP-Hemoglobin-Thresholds-Paper/
-│
-├── README.md
-│
-├── Reference-Limits/
-│   └── code/
-│
-└── Decision-Limits/
-    ├── code/
-    └── iso-code-folder/
-```
----
 
 # Reference Limits
 
@@ -64,14 +46,10 @@ The primary Reference Limits script generates:
 The overall and trimester-specific summaries represent the **median of the gestation-specific predicted centile values** within each specified gestational-age interval.
 Numerical outputs are combined into a single Excel workbook with separate worksheets for the major FPR results. The primary figure is saved separately.
 
----
-
 # Decision Limits
-
 The `Decision-Limits` directory contains the primary analyses used to evaluate maternal hemoglobin concentrations in relation to maternal and infant outcomes.
 
 ## Analysis approach
-
 The Decision Limits analysis uses two complementary modeling approaches:
 
 * **Restricted cubic spline regression** to characterize potentially non-linear relationships between maternal Hb and each outcome.
@@ -85,7 +63,6 @@ For each analysis, the user specifies the:
 * outcome label.
 
 ## Analysis periods
-
 Where applicable and supported by the outcome-specific dataset, analyses are conducted for:
 
 * all pregnancy Hb measurements combined;
@@ -97,12 +74,10 @@ Where applicable and supported by the outcome-specific dataset, analyses are con
 Outcome-specific Hb variables are used so that the selected hemoglobin measurement corresponds to the relevant analysis period and outcome.
 
 ## Outcome types
-
 Most maternal and infant outcomes are analyzed as **binary outcomes**.
 The fatigue analysis uses the corresponding **continuous fatigue score** and continuous-outcome modeling functions.
 
 ## Decision-limit outputs
-
 For each eligible outcome and analysis period, the analysis generates:
 
 * the analytic sample size;
@@ -111,24 +86,17 @@ For each eligible outcome and analysis period, the analysis generates:
 * standardized decision-limit hemoglobin thresholds; and
 * graphical displays of the Hb–outcome relationship.
 
----
-
 # Public analysis datasets
 The scripts in this directory begin with **ReMAPP analysis datasets**.
 These datasets contain the derived variables required to reproduce the primary manuscript analyses and therefore represent the starting point for the public code.
 
----
 # Reproducibility
-
 The code in this directory has been prepared specifically for public reproducibility of the primary manuscript analyses.
 Users should begin with the corresponding paper-ready ReMAPP dataset and run the appropriate script within either:
 * `Reference-Limits`, for the primary FPR analysis; or
 * `Decision-Limits`, for the primary outcome-based threshold analyses.
 The resulting outputs can be compared with the corresponding tables, estimates, and figures reported in the manuscript.
 
----
 ## Software
-
 Analyses were conducted using **R**.
-
-Package requirements are specified within the individual analysis scripts. Package versions and additional reproducibility information should be referenced from the final archived version of the repository associated with the manuscript.
+Package requirements are specified within the individual analysis scripts. 
